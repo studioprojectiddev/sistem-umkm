@@ -9,6 +9,7 @@ class ProductSalesSummary extends Model
 {
     use HasFactory;
 
+    protected $table = 'product_sales_summary';
     protected $fillable = [
         'product_id',
         'variation_id',

@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\Transaction;
 use App\Models\TransactionItem;
 use App\Models\ProductSalesSummary;
+use App\Models\ProductVariation;
 
 class PosController extends Controller
 {
@@ -17,9 +18,45 @@ class PosController extends Controller
      */
     public function index()
     {
-        $products = Product::select('id','name','sku','price','stock','thumbnail','unit')->get();
+        $products = Product::with([
+            'category',
+            'variations.options.attribute'
+        ])->select(
+            'id',
+            'name',
+            'sku',
+            'price',
+            'cost_price',
+            'discount_price',
+            'is_promo',
+            'promo_price',
+            'promo_start',
+            'promo_end',
+            'stock',
+            'thumbnail',
+            'unit'
+        )->get();
+
+        // Tambahkan properti final_price langsung di controller
+        $products->each(function ($product) {
+            $product->final_price = ($product->is_promo && $product->promo_start <= now() && $product->promo_end >= now())
+                ? $product->promo_price
+                : $product->price;
+
+            // Siapkan variations jadi array siap pakai
+            $product->variation_json = $product->variations->map(function ($v) {
+                return [
+                    "id"    => $v->id,
+                    "name"  => $v->name,
+                    "price" => $v->price,
+                    "stock" => $v->stock,
+                ];
+            })->values()->toArray();
+        });
+
         $cart = session()->get('cart', []);
-        return view('umkm.pos', compact('products','cart'));
+
+        return view('umkm.pos', compact('products', 'cart'));
     }
 
     /**
@@ -39,21 +76,35 @@ class PosController extends Controller
         $product = Product::findOrFail($id);
         $cart = session()->get('cart', []);
 
+        // Tentukan harga
+        $today = now();
+        $price = $product->price;
+
+        if ($product->is_promo 
+            && $product->promo_price 
+            && $product->promo_start <= $today 
+            && $product->promo_end >= $today) {
+            $price = $product->promo_price;
+        }
+
         if (isset($cart[$id])) {
             $cart[$id]['quantity'] += 1;
         } else {
             $cart[$id] = [
-                "name" => $product->name,
+                "id"       => $product->id,
+                "type"     => "product",
+                "name"     => $product->name,
                 "quantity" => 1,
-                "price" => $product->price,
-                "thumbnail" => $product->thumbnail,
+                "price"    => $price,
+                "thumbnail"=> $product->thumbnail,
                 "discount" => 0,
-                "subtotal" => $product->price,
-                "unit" => $product->unit ?? 'pcs'
+                "subtotal" => $price,
+                "unit"     => $product->unit ?? 'pcs'
             ];
         }
 
         $cart[$id]['subtotal'] = ($cart[$id]['price'] * $cart[$id]['quantity']) - $cart[$id]['discount'];
+
         session()->put('cart', $cart);
 
         return response()->json(['status' => 'success', 'cart' => $cart]);
@@ -127,50 +178,72 @@ class PosController extends Controller
 
             // Simpan transaksi
             $transaction = Transaction::create([
-                'invoice_number' => 'INV' . time(),
+                'invoice_number'   => 'INV' . time(),
                 'transaction_type' => 'sale',
-                'idpenginput' => auth()->id(),
-                'user_id' => auth()->id(),
-                'subtotal' => $subtotal,
-                'discount' => $discount,
-                'tax' => $tax,
-                'shipping_cost' => $shipping_cost,
-                'total' => $total,
-                'payment_status' => 'paid',
-                'payment_method' => $request->payment_method ?? 'cash',
-                'status' => 'completed',
+                'idpenginput'      => auth()->id(),
+                'user_id'          => auth()->id(),
+                'subtotal'         => $subtotal,
+                'discount'         => $discount,
+                'tax'              => $tax,
+                'shipping_cost'    => $shipping_cost,
+                'total'            => $total,
+                'payment_status'   => 'paid',
+                'payment_method'   => $request->payment_method ?? 'cash',
+                'status'           => 'completed',
             ]);
 
-            foreach ($cart as $productId => $item) {
+            foreach ($cart as $key => $item) {
+                $isVariation = $item['type'] === 'variation';
+            
+                // Ambil product_id untuk varian
+                $productId = null;
+                $variationId = null;
+            
+                if ($isVariation) {
+                    $variation = \App\Models\ProductVariation::with('product')->find($item['id']);
+                    if (!$variation) {
+                        throw new \Exception("Varian tidak ditemukan");
+                    }
+                    $productId = $variation->product_id; // produk induk
+                    $variationId = $variation->id;
+                } else {
+                    $productId = $item['id'];
+                }
+            
                 // Simpan detail item
                 TransactionItem::create([
                     'transaction_id' => $transaction->id,
-                    'idpenginput' => auth()->id(),
-                    'product_id' => $productId,
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                    'discount' => $item['discount'],
-                    'subtotal' => $item['subtotal'],
-                    'unit' => $item['unit'] ?? 'pcs'
+                    'idpenginput'    => auth()->id(),
+                    'product_id'     => $productId,
+                    'variation_id'   => $variationId,
+                    'quantity'       => $item['quantity'],
+                    'price'          => $item['price'],
+                    'discount'       => $item['discount'],
+                    'subtotal'       => $item['subtotal'],
+                    'unit'           => $item['unit'] ?? 'pcs'
                 ]);
-
-                // Update stok produk
-                $product = Product::find($productId);
-                if ($product) {
-                    $product->decrement('stock', $item['quantity']);
+            
+                // Kurangi stok
+                if ($isVariation) {
+                    $variation->decrement('stock', $item['quantity']);
+                } else {
+                    $product = Product::find($productId);
+                    if ($product) {
+                        $product->decrement('stock', $item['quantity']);
+                    }
                 }
-
+            
                 // Update summary penjualan
                 $summary = ProductSalesSummary::firstOrNew([
-                    'product_id' => $productId,
-                    'variation_id' => null,
-                    'date' => now()->toDateString()
+                    'product_id'   => $productId,
+                    'variation_id' => $variationId,
+                    'date'         => now()->toDateString()
                 ]);
-                $summary->idpenginput = auth()->id();
-                $summary->total_qty = ($summary->total_qty ?? 0) + $item['quantity'];
-                $summary->total_sales = ($summary->total_sales ?? 0) + $item['subtotal'];
+                $summary->idpenginput   = auth()->id();
+                $summary->total_qty     = ($summary->total_qty ?? 0) + $item['quantity'];
+                $summary->total_sales   = ($summary->total_sales ?? 0) + $item['subtotal'];
                 $summary->save();
-            }
+            }            
 
             DB::commit();
             session()->forget('cart');
@@ -182,4 +255,49 @@ class PosController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Terjadi kesalahan saat checkout.']);
         }
     }
+
+    // PosController
+    public function getProducts()
+    {
+        $products = Product::select('id','name','sku','price','stock','thumbnail','unit')->get();
+        return response()->json($products);
+    }
+
+    public function addVariationToCart(Request $request, $id)
+    {
+        $variation = ProductVariation::with('product')->findOrFail($id);
+
+        if ($variation->stock <= 0) {
+            return response()->json(['status' => 'error', 'message' => 'Stok varian habis!']);
+        }
+
+        $cart = session()->get('cart', []);
+        $key = "variation_{$variation->id}";
+
+        if (isset($cart[$key])) {
+            $cart[$key]['quantity'] += 1;
+        } else {
+            $cart[$key] = [
+                "id" => $variation->id,
+                "type" => "variation",
+                "name" => ($variation->product->name ?? 'Produk') . ' - ' . $variation->name,
+                "quantity" => 1,
+                "price" => $variation->price ?? $variation->product->price,
+                "thumbnail" => $variation->image ?? ($variation->product->thumbnail ?? null),
+                "discount" => 0,
+                "subtotal" => $variation->price ?? $variation->product->price,
+                "unit" => $variation->product->unit ?? 'pcs'
+            ];
+        }
+
+        $cart[$key]['subtotal'] = ($cart[$key]['price'] * $cart[$key]['quantity']) - $cart[$key]['discount'];
+
+        // 🚫 HAPUS ini:
+        // $variation->decrement('stock', 1);
+
+        session()->put('cart', $cart);
+
+        return response()->json(['status' => 'success', 'cart' => $cart]);
+    }
+
 }

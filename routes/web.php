@@ -54,6 +54,8 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::delete('/umkm/pos/remove/{id}', [PosController::class, 'removeFromCart'])->name('umkm.pos.remove');
     Route::post('/umkm/pos/clear', [PosController::class, 'clearCart'])->name('umkm.pos.clear');
     Route::post('/umkm/pos/checkout', [PosController::class, 'checkout'])->name('umkm.pos.checkout');
+    Route::get('/umkm/pos/products', [PosController::class, 'getProducts'])->name('umkm.pos.products');
+    Route::post('/umkm/pos/add-variation/{id}', [PosController::class, 'addVariationToCart'])->name('umkm.pos.addVariation');
 
 });
 

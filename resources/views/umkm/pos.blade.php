@@ -117,6 +117,91 @@
     -moz-appearance: textfield; /* Firefox */
 }
 
+/* Container card */
+.form-card {
+    background: #fff;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+}
+
+.form-title {
+    margin-bottom: 15px;
+    color: #333;
+}
+
+/* Grid system */
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+/* Full width (misalnya untuk select dan harga akhir) */
+.form-group.full {
+    grid-column: span 2;
+}
+
+/* Input & Select style */
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.9rem;
+    color: #444;
+    font-weight: 600;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    font-size: 0.95rem;
+    transition: border 0.2s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    border-color: #007bff;
+    outline: none;
+}
+
+/* Checkbox */
+.form-check {
+    margin-bottom: 15px;
+}
+
+.promo-box {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px dashed #ccc;
+    margin-bottom: 15px;
+}
+
+/* Submit button */
+.form-actions {
+    text-align: right;
+}
+
+.form-actions button {
+    background: #28a745;
+    color: white;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.2s ease;
+}
+
+.form-actions button:hover {
+    background: #218838;
+}
+
 </style>
 
 
@@ -142,7 +227,6 @@
 
         {{-- Tab: Identitas Produk --}}
         <div id="identitasproduk" class="tab-pane active">
-            <h3>Identitas Produk Lengkap</h3>
             <table class="table table-bordered table-striped">
                 <thead>
                     <tr>
@@ -157,43 +241,134 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse($products as $index => $product)
-                    <tr>
-                        <td>{{ $index + 1 }}</td>
-                        <td>
-                            @if($product->thumbnail)
-                                <img src="{{ asset($product->thumbnail) }}" 
-                                     alt="{{ $product->name }}" width="50">
-                            @else
-                                <span>-</span>
-                            @endif
-                        </td>
-                        <td>{{ $product->name }}</td>
-                        <td>{{ $product->category->name ?? '-' }}</td>
-                        <td>{{ $product->sku ?? $product->barcode ?? '-' }}</td>
-                        <td>Rp {{ number_format($product->price, 0, ',', '.') }}</td>
-                        <td>{{ $product->stock }} {{ $product->unit ?? 'pcs' }}</td>
-                        <td>
-                            <button class="btn btn-sm btn-success btn-add-cart" 
-                                    data-id="{{ $product->id }}">
-                                + Keranjang
-                            </button>
-                        </td>
-                    </tr>
-                    @empty
-                    <tr>
-                        <td colspan="8" class="text-center">Belum ada produk</td>
-                    </tr>
-                    @endforelse
+                @foreach($products as $index => $product)
+                <tr>
+                    <td>{{ $index + 1 }}</td>
+                    <td>
+                        @if($product->thumbnail)
+                            <img src="{{ asset($product->thumbnail) }}" alt="{{ $product->name }}" width="50">
+                        @else
+                            <span>-</span>
+                        @endif
+                    </td>
+                    <td>
+                        {{ $product->name }}
+                        @if($product->variations->count())
+                            <ul>
+                                @foreach($product->variations as $var)
+                                    <li>
+                                        {{ $var->name }} 
+                                        (Stok: {{ $var->stock }}, Rp {{ number_format($var->price, 0, ',', '.') }})
+                                        @if($var->options->count())
+                                            <small>
+                                                [
+                                                @foreach($var->options as $opt)
+                                                    {{ $opt->attribute->name }}: {{ $opt->value }}@if(!$loop->last), @endif
+                                                @endforeach
+                                                ]
+                                            </small>
+                                        @endif
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                    </td>
+                    <td>{{ $product->category->name ?? '-' }}</td>
+                    <td>{{ $product->sku ?? $product->barcode ?? '-' }}</td>
+                    <td>Rp {{ number_format($product->price, 0, ',', '.') }}</td>
+                    <td>{{ $product->stock }} {{ $product->unit ?? 'pcs' }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-success btn-add-cart"
+                            data-id="{{ $product->id }}"
+                            data-price="{{ $product->price }}"
+                            data-final-price="{{ $product->final_price }}"
+                            data-has-variation="{{ $product->variations->count() > 0 ? 1 : 0 }}"
+                            data-variations='@json($product->variation_json)'>
+                            + Keranjang
+                        </button>
+                    </td>
+                </tr>
+                @endforeach
                 </tbody>
             </table>
         </div>
 
         {{-- Tab: Harga & Diskon --}}
         <div id="hargadiskon" class="tab-pane">
-            <h3>Harga & Variasi Diskon</h3>
-            <p>Belum ada konten. (Akan diisi setelah identitas produk selesai)</p>
+            <div class="form-card">
+                <h3 class="form-title">💰 Harga & Variasi Diskon</h3>
+
+                {{-- Pilih Produk --}}
+                <div class="form-group full">
+                    <label for="select_product">Pilih Produk</label>
+                    <select id="select_product">
+                        <option value="">-- Pilih Produk --</option>
+                        @foreach($products as $p)
+                            <option value="{{ $p->id }}"
+                                data-price="{{ $p->price }}"
+                                data-cost="{{ $p->cost_price }}"
+                                data-discount="{{ $p->discount_price }}"
+                                data-ispromo="{{ $p->is_promo }}"
+                                data-promoprice="{{ $p->promo_price }}"
+                                data-promostart="{{ $p->promo_start }}"
+                                data-promoend="{{ $p->promo_end }}">
+                                {{ $p->name }} ({{ $p->sku ?? 'No SKU' }})
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <form id="discountForm" method="POST" action="">
+                    @csrf
+                    <input type="hidden" name="product_id" id="product_id">
+
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="base_price">Harga Dasar (Rp)</label>
+                            <input type="number" id="base_price" name="price" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label for="cost_price">Harga Modal (Rp)</label>
+                            <input type="number" id="cost_price" name="cost_price" readonly>
+                        </div>
+                    </div>
+
+                    <div class="form-group full">
+                        <label for="final_price">Harga Setelah Diskon (Rp)</label>
+                        <input type="text" id="final_price" name="discount_price" readonly>
+                    </div><br>
+
+                    <hr><br>
+
+                    <div class="form-check">
+                        <input type="checkbox" id="is_promo" name="is_promo" value="1">
+                        <label for="is_promo">Aktifkan Promo</label>
+                    </div>
+
+                    <div id="promo_section" class="promo-box" style="display:none;">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="promo_price">Harga Promo (Rp)</label>
+                                <input type="number" id="promo_price" name="promo_price">
+                            </div>
+                            <div class="form-group">
+                                <label for="promo_start">Promo Mulai</label>
+                                <input type="date" id="promo_start" name="promo_start">
+                            </div>
+                            <div class="form-group">
+                                <label for="promo_end">Promo Selesai</label>
+                                <input type="date" id="promo_end" name="promo_end">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit">💾 Simpan</button>
+                    </div>
+                </form>
+            </div>
         </div>
+
 
         {{-- Tab: Stok Real-time --}}
         <div id="stokreal" class="tab-pane">
@@ -203,7 +378,6 @@
 
         {{-- Tab: Aksi Kasir --}}
         <div id="aksikasir" class="tab-pane">
-            <h3>Aksi Kasir (Keranjang)</h3>
             <table class="table" id="cartTable">
                 <thead>
                     <tr>
@@ -270,13 +444,58 @@ function refreshCart(cart){
 }
 
 // Tambah produk
-$(".btn-add-cart").click(function(){
-    console.log('test')
-    let id = $(this).data("id");
-    $.post(`/umkm/pos/add/${id}`, {_token:"{{ csrf_token() }}"}, function(res){
-        if(res.status === "success"){ refreshCart(res.cart); }
-    });
+$(document).on('click', '.btn-add-cart', function(e){
+    e.preventDefault();
+    let $btn = $(this);
+    let productId = $btn.data('id');
+    let hasVariation = $btn.data('has-variation') == 1;
+    let variations = $btn.data('variations') || [];
+    let productPrice = $btn.data('price') || 0;
+
+    if(hasVariation){
+        let html = `<select id="swal_select" class="swal2-select" style="width:100%;padding:8px;">
+            <option value="product_${productId}">Produk Utama - Rp ${Number(productPrice).toLocaleString()}</option>`;
+
+        variations.forEach(v => {
+            html += `<option value="variation_${v.id}">${v.name} - Rp ${Number(v.price||productPrice).toLocaleString()} (Stok: ${v.stock})</option>`;
+        });
+        html += `</select>`;
+
+        Swal.fire({
+            title: 'Pilih produk / varian',
+            html: html,
+            showCancelButton: true,
+            confirmButtonText: 'Tambah ke Keranjang',
+            preConfirm: () => {
+                return $('#swal_select').val();
+            }
+        }).then(result => {
+            if(result.isConfirmed && result.value){
+                const val = result.value;
+                if(val.startsWith('product_')){
+                    const id = val.split('_')[1];
+                    $.post(`/umkm/pos/add/${id}`, {_token: "{{ csrf_token() }}"}, function(res){
+                        if(res.status === 'success') refreshCart(res.cart);
+                        else Swal.fire('Error', res.message || 'Gagal menambah', 'error');
+                    });
+                } else {
+                    const vid = val.split('_')[1];
+                    $.post(`/umkm/pos/add-variation/${vid}`, {_token: "{{ csrf_token() }}"}, function(res){
+                        if(res.status === 'success') refreshCart(res.cart);
+                        else Swal.fire('Error', res.message || 'Gagal menambah', 'error');
+                    });
+                }
+            }
+        });
+    } else {
+        // no variation - add product
+        $.post(`/umkm/pos/add/${productId}`, {_token: "{{ csrf_token() }}"}, function(res){
+            if(res.status === 'success') refreshCart(res.cart);
+            else Swal.fire('Error', res.message || 'Gagal menambah', 'error');
+        });
+    }
 });
+
 
 // Update qty
 $(document).on("change", ".qty", function(){
@@ -312,9 +531,89 @@ $("#clearCart").click(function(){
 // Checkout
 $("#checkout").click(function(){
     $.post(`/umkm/pos/checkout`, {_token:"{{ csrf_token() }}"}, function(res){
-        alert(res.message);
-        if(res.status === "success"){ refreshCart([]); }
+        if(res.status === "success"){ 
+            Swal.fire({
+                icon: 'success',
+                title: 'Berhasil!',
+                text: res.message,
+                timer: 2000,
+                showConfirmButton: false
+            }).then(() => {
+                refreshCart([]);
+                $.get(`/umkm/pos/products`, function(products){
+                    let tbody = $("table tbody");
+                    tbody.empty();
+                    products.forEach((p, index) => {
+                        tbody.append(`
+                            <tr>
+                                <td>${index+1}</td>
+                                <td>${p.thumbnail ? `<img src="/${p.thumbnail}" width="50">` : '-'}</td>
+                                <td>${p.name}</td>
+                                <td>-</td>
+                                <td>${p.sku ?? '-'}</td>
+                                <td>Rp ${p.price.toLocaleString()}</td>
+                                <td>${p.stock} ${p.unit ?? 'pcs'}</td>
+                                <td><button class="btn btn-sm btn-success btn-add-cart" data-id="${p.id}">+ Keranjang</button></td>
+                            </tr>
+                        `);
+                    });
+                });
+                location.reload();
+            });
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Oops...',
+                text: res.message
+            });
+        }
     });
 });
+
+// Promo toggle
+$("#is_promo").change(function(){
+    if($(this).is(":checked")){
+        $("#promo_section").show();
+    } else {
+        $("#promo_section").hide();
+        $("#promo_price").val(0);
+        $("#promo_start").val('');
+        $("#promo_end").val('');
+    }
+});
+
+// Ketika pilih produk
+$("#select_product").change(function(){
+    let selected = $(this).find(":selected");
+
+    if(selected.val() !== ""){
+        $("#product_id").val(selected.val());
+
+        // Set harga dasar & modal
+        $("#base_price").val(selected.data("price") || 0);
+        $("#cost_price").val(selected.data("cost") || 0);
+
+        // Set harga setelah diskon langsung dari DB
+        $("#final_price").val(selected.data("discount") || 0);
+
+        // Promo
+        if(selected.data("ispromo") == 1){
+            $("#is_promo").prop("checked", true);
+            $("#promo_section").show();
+            $("#promo_price").val(selected.data("promoprice") || 0);
+            $("#promo_start").val(selected.data("promostart") || "");
+            $("#promo_end").val(selected.data("promoend") || "");
+        } else {
+            $("#is_promo").prop("checked", false);
+            $("#promo_section").hide();
+        }
+    } else {
+        // Reset kalau tidak pilih produk
+        $("#product_id").val("");
+        $("#discountForm").trigger("reset");
+        $("#promo_section").hide();
+    }
+});
+
 </script>
 @endsection

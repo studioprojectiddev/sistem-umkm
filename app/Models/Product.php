@@ -83,6 +83,27 @@ class Product extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function variations()
+    {
+        return $this->hasMany(ProductVariation::class, 'product_id');
+    }
+
+    public function getFinalPriceAttribute()
+    {
+        $today = now();
+
+        if ($this->is_promo 
+            && $this->promo_price 
+            && $this->promo_start 
+            && $this->promo_end 
+            && $this->promo_start <= $today 
+            && $this->promo_end >= $today) {
+            return $this->promo_price;
+        }
+
+        return $this->price;
+    }
+
     // Auto generate slug
     protected static function boot()
     {
@@ -94,4 +115,5 @@ class Product extends Model
             }
         });
     }
+
 }

@@ -2,6 +2,108 @@
 
 @section('title', 'List Product')
 
+<style>
+    /* Kotak pemisah untuk setiap variasi */
+    .variation-block {
+        border: 1px solid #ddd;       /* garis abu tipis */
+        border-radius: 8px;           /* sudut melengkung */
+        padding: 16px;                /* jarak isi ke border */
+        margin-bottom: 20px;          /* jarak antar variasi */
+        background-color: #fafafa;    /* warna dasar lembut */
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05); /* efek bayangan halus */
+    }
+
+    /* Judul variasi */
+    .variation-block label {
+        font-weight: 600;
+        color: #333;
+    }
+
+    /* Agar isi form tetap rapi */
+    .variation-block .form-row {
+        margin-bottom: 12px;
+    }
+
+    /* Tombol umum */
+    .btn-add-row,
+    .btn-remove-variation {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        margin-right: 8px; /* jarak antar tombol */
+    }
+
+    /* Tambah Variasi */
+    .btn-add-row {
+        background-color: #28a745; /* hijau */
+        color: #fff;
+    }
+    .btn-add-row:hover {
+        background-color: #218838;
+    }
+
+    /* Hapus Variasi */
+    .btn-remove-variation {
+        background-color: #dc3545; /* merah */
+        color: #fff;
+    }
+    .btn-remove-variation:hover {
+        background-color: #c82333;
+    }
+
+    /* Modal Overlay */
+    #createVariationModal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    /* Modal Box */
+    #createVariationModal .modal-content2 {
+        background: #fff;
+        border-radius: 10px;
+        width: 80%;
+        max-width: 900px;
+        max-height: 90vh; /* batas tinggi modal */
+        overflow-y: auto; /* scroll kalau konten kepanjangan */
+        padding: 20px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+    }
+
+    /* Scrollbar biar enak dilihat */
+    #createVariationModal .modal-content2::-webkit-scrollbar {
+        width: 8px;
+    }
+    #createVariationModal .modal-content2::-webkit-scrollbar-thumb {
+        background: #bbb;
+        border-radius: 5px;
+    }
+    #createVariationModal .modal-content2::-webkit-scrollbar-thumb:hover {
+        background: #888;
+    }
+
+    .btn-add-attribute {
+        background: #28a745;
+        color: white;
+        padding: 6px 10px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+
+</style>
+
 @section('content')
 <h1 class="title">List Product</h1>
 <ul class="breadcrumbs">
@@ -62,6 +164,7 @@
                             <th>Kategori</th>
                             <th>Harga</th>
                             <th>Stok</th>
+                            <th>Satuan</th>
                             <th>Status</th>
                             <th width="150">Aksi</th>
                         </tr>
@@ -80,7 +183,8 @@
                                 <td style="text-align:center;">{{ $product->name }}</td>
                                 <td style="text-align:center;">{{ $product->category->name ?? '-' }}</td>
                                 <td style="text-align:center;">Rp {{ number_format($product->price, 0, ',', '.') }}</td>
-                                <td style="text-align:center;">{{ $product->stock }} {{ $product->unit }}</td>
+                                <td style="text-align:center;">{{ $product->stock }}</td>
+                                <td style="text-align:center;">{{ $product->unit }}</td>
                                 <td style="text-align:center;">
                                     @if($product->is_active)
                                         <span class="badge bg-success">Aktif</span>
@@ -186,70 +290,79 @@
                         <tr>
                             <th>Produk</th>
                             <th>Variasi</th>
+                            <th>Berat</th>
                             <th>Harga</th>
                             <th>Stok</th>
                             <th>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @forelse ($variations as $variation)
-                            <tr>
-                                <td>{{ $variation->product->name }}</td>
-                                <td>
-                                    @php
-                                        // kelompokkan berdasarkan attribute name
-                                        $grouped = $variation->options->groupBy(function($opt) {
-                                            return $opt->attribute->name;
-                                        });
-                                    @endphp
+                        @php
+                            // Kelompokkan variasi berdasarkan produk
+                            $groupedVariations = $variations->groupBy('product.name');
+                        @endphp
 
-                                    @foreach ($grouped as $attrName => $opts)
-                                        <div>
-                                            <span class="badge">{{ $attrName }}</span> - 
-                                            {{ $opts->pluck('value')->implode(', ') }}
-                                        </div>
-                                    @endforeach
-                                </td>
-                                <td>Rp {{ number_format($variation->price, 0, ',', '.') }}</td>
-                                <td>{{ $variation->stock }}</td>
-                                <td>
-                                    <div class="button-container">
-                                        <div style="margin-top:16px;">
+                        @forelse ($groupedVariations as $productName => $productVariations)
+                            @foreach ($productVariations as $index => $variation)
+                                <tr>
+                                    {{-- Produk hanya muncul sekali (rowspan) --}}
+                                    @if ($index === 0)
+                                        <td rowspan="{{ $productVariations->count() }}">
+                                            {{ $variation->product->name }}
+                                        </td>
+                                    @endif
+
+                                    <td>
+                                        @php
+                                            $grouped = $variation->options->groupBy(fn($opt) => $opt->attribute->name);
+                                        @endphp
+                                        @foreach ($grouped as $attrName => $opts)
+                                            <div>
+                                                <span class="badge">{{ $attrName }}</span> - 
+                                                {{ $opts->pluck('value')->implode(', ') }}
+                                            </div>
+                                        @endforeach
+                                    </td>
+                                    <td>{{ (int) $variation->weight }} g</td>
+                                    <td>Rp {{ number_format($variation->price, 0, ',', '.') }}</td>
+                                    <td>{{ $variation->stock }}</td>
+                                    <td>
+                                        <div class="button-container">
                                             <a href="javascript:void(0);" 
                                                 class="btn btn-sm btn-warning variation-edit-btn"
                                                 data-id="{{ $variation->id }}"
                                                 data-product="{{ $variation->product_id }}"
                                                 data-price="{{ $variation->price }}"
                                                 data-stock="{{ $variation->stock }}"
-                                                data-sku="{{ $variation->sku }}"        
-                                                data-weight="{{ $variation->weight }}"  
+                                                data-sku="{{ $variation->sku }}"
+                                                data-weight="{{ $variation->weight }}"
                                                 data-options='@json(
                                                     $variation->options->map(fn($opt) => [
                                                         "attribute_id" => $opt->attribute_id,
                                                         "option_id"    => $opt->id
                                                     ])
-                                                )'
-                                            >
+                                                )'>
                                                 Edit
                                             </a>
-                                        </div>
 
-                                        <form method="POST" action="{{ route('umkm.variation.destroy', $variation->id) }}" class="delete-form" style="display:inline;">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="button" class="btn-variasi-delete swal-confirm">Hapus</button>
-                                        </form>
-                                    </div>
-                                </td>
-                            </tr>
+                                            <form method="POST" action="{{ route('umkm.variation.destroy', $variation->id) }}" class="delete-form" style="display:inline;">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="button" class="btn-variasi-delete swal-confirm">Hapus</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endforeach
                         @empty
                             <tr>
-                                <td colspan="6" class="empty-data">Belum ada variasi.</td>
+                                <td colspan="5" class="empty-data">Belum ada variasi.</td>
                             </tr>
                         @endforelse
                     </tbody>
                 </table>
             </div>
+
 
             {{-- PAGINATION --}}
             <div class="pagination-container">
@@ -643,12 +756,16 @@
 <div id="createVariationModal" class="modal-overlay hidden">
     <div class="modal-content2">
         <span id="closeModalVariationBtn" class="close-btn">&times;</span>
-        <h2 class="modal-title">Kelola Variasi Produk</h2>
+        <div style="text-align:center">
+            <h2 class="modal-title">Kelola Variasi Produk</h2>
+        </div>
 
         {{-- ================= FORM 1: Tambah Atribut & Opsi ================= --}}
         <form id="attributeForm" method="POST" action="{{ route('umkm.atribut.store') }}">
             @csrf
-            <h3 class="section-title">Tambah Atribut Baru</h3>
+            <div style="text-align:center">
+                <h3 class="section-title">Tambah Atribut Baru</h3>
+            </div><br>
 
             <div class="form-row">
                 <div class="form-group">
@@ -680,10 +797,12 @@
         {{-- ================= FORM 2: Tambah Variasi Produk ================= --}}
         <form id="variationForm" method="POST" action="{{ route('umkm.variasi.store') }}" enctype="multipart/form-data">
             @csrf
-            <h3 class="section-title">Tambah Variasi Produk</h3>
+            <div style="text-align:center">
+                <h3 class="section-title">Tambah Variasi Produk</h3>
+            </div><br>
 
+            {{-- Pilih Produk --}}
             <div class="form-row">
-                {{-- Pilih Produk --}}
                 <div class="form-group">
                     <label for="product_id">Produk</label>
                     <select name="product_id" id="product_id" required>
@@ -695,80 +814,86 @@
                 </div>
             </div>
 
-            <div class="form-row">
-                {{-- Pilih Atribut + Opsi --}}
-                <div class="form-group">
-                    <label for="attributes">Variasi</label>
-                    <div id="variationAttributes">
-                        <div class="variation-row">
-                            <select name="attributes[]" class="attribute-select" required>
-                                <option value="">-- Pilih Atribut --</option>
-                                @foreach ($variationAttributes as $attribute)
-                                    <option value="{{ $attribute->id }}">{{ $attribute->name }}</option>
-                                @endforeach
-                            </select>
+            <div id="variationsWrapper">
+                <div class="variation-block border p-3 mb-3">
 
-                            <select name="options[]" class="option-select" required>
-                                <option value="">-- Pilih Opsi --</option>
-                                {{-- opsi diisi via JS --}}
-                            </select>
+                    {{-- Atribut + Opsi --}}
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Variasi</label>
+                            <div class="variation-attributes">
+                                <div class="variation-row mb-2 flex gap-2">
+                                    <select name="variations[0][attributes][]" class="attribute-select" required>
+                                        <option value="">-- Pilih Atribut --</option>
+                                        @foreach ($variationAttributes as $attribute)
+                                            <option value="{{ $attribute->id }}">{{ $attribute->name }}</option>
+                                        @endforeach
+                                    </select>
 
-                            <button type="button" class="btn-remove-row">X</button>
+                                    <select name="variations[0][options][]" class="option-select" required>
+                                        <option value="">-- Pilih Opsi --</option>
+                                    </select>
+
+                                    <button type="button" class="btn-remove-row">-</button>
+                                </div>
+                            </div>
+                            <button type="button" class="btn-add-attribute">+ Tambah Atribut</button>
                         </div>
                     </div>
-                    <button type="button" id="addVariationRow" class="btn-add-row">+ Tambah Variasi</button>
+
+                    {{-- Harga & Stok --}}
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Harga</label>
+                            <input type="number" name="variations[0][price]" placeholder="Masukkan harga" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Stok</label>
+                            <input type="number" name="variations[0][stock]" placeholder="Jumlah stok" required>
+                        </div>
+                    </div>
+
+                    {{-- Berat & Gambar --}}
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Berat (gram)</label>
+                            <input type="number" name="variations[0][weight]" placeholder="Berat dalam gram" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Foto Variasi</label>
+                            <input type="file" name="variations[0][image]" accept="image/*">
+                        </div>
+                    </div>
+
+                    {{-- SKU & Status --}}
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>SKU (opsional)</label>
+                            <input type="text" name="variations[0][sku]" placeholder="Kode SKU unik">
+                        </div>
+                        <div class="form-group">
+                            <label>Status</label>
+                            <select name="variations[0][is_active]">
+                                <option value="1">Aktif</option>
+                                <option value="0">Nonaktif</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <div class="form-row">
-                {{-- Harga --}}
                 <div class="form-group">
-                    <label for="price">Harga</label>
-                    <input type="number" name="price" id="price" placeholder="Masukkan harga" required>
+                    <button type="button" id="addVariation" class="btn-add-row">Tambah Variasi Baru</button>
                 </div>
-
-                {{-- Stok --}}
-                <div class="form-group">
-                    <label for="stock">Stok</label>
-                    <input type="number" name="stock" id="stock" placeholder="Jumlah stok" required>
-                </div>
-            </div>
-
-            <div class="form-row">
-                {{-- Berat --}}
-                <div class="form-group">
-                    <label for="weight">Berat (gram)</label>
-                    <input type="number" name="weight" id="weight" placeholder="Berat dalam gram" required>
-                </div>
-
-                {{-- Gambar --}}
-                <div class="form-group">
-                    <label for="image">Foto Variasi</label>
-                    <input type="file" name="image" id="image" accept="image/*">
-                </div>
-            </div>
-
-            <div class="form-row">
-                {{-- SKU --}}
-                <div class="form-group">
-                    <label for="sku">SKU (opsional)</label>
-                    <input type="text" name="sku" id="sku" placeholder="Kode SKU unik">
-                </div>
-
-                {{-- Status --}}
-                <div class="form-group">
-                    <label for="edit_is_active">Status</label>
-                    <select name="is_active" id="edit_is_active">
-                        <option value="1">Aktif</option>
-                        <option value="0">Nonaktif</option>
-                    </select>
-                </div>
+                <div class="form-group"></div>
             </div>
 
             <div class="modal-actions">
-                <button type="submit" class="btn-submit">Simpan Variasi</button>
+                <button type="submit" class="btn-submit">Simpan Semua Variasi</button>
             </div>
         </form>
+
     </div>
 </div>
 <div id="variationEditModal" class="modal-overlay hidden">
@@ -939,6 +1064,137 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
     });
+});
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    let variationIndex = 1; // sudah ada Variasi #1 di awal
+
+    const variationsWrapper = document.getElementById("variationsWrapper");
+    const addVariationBtn = document.getElementById("addVariation");
+
+    // Tambah Variasi Baru
+    addVariationBtn.addEventListener("click", function () {
+        variationIndex++;
+
+        // template blok variasi
+        const variationBlock = document.createElement("div");
+        variationBlock.classList.add("variation-block");
+
+        variationBlock.innerHTML = `
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Variasi</label>
+                    <div class="variation-attributes">
+                        <div class="variation-row mb-2 flex gap-2">
+                            <select name="variations[${variationIndex}][attributes][]" class="attribute-select" required>
+                                <option value="">-- Pilih Atribut --</option>
+                                ${getAttributesOptions()}
+                            </select>
+
+                            <select name="variations[${variationIndex}][options][]" class="option-select" required>
+                                <option value="">-- Pilih Opsi --</option>
+                            </select>
+
+                            <button type="button" class="btn-remove-row">-</button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-add-attribute">+ Tambah Atribut</button>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Harga</label>
+                    <input type="number" name="variations[${variationIndex}][price]" placeholder="Masukkan harga" required>
+                </div>
+                <div class="form-group">
+                    <label>Stok</label>
+                    <input type="number" name="variations[${variationIndex}][stock]" placeholder="Jumlah stok" required>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Berat (gram)</label>
+                    <input type="number" name="variations[${variationIndex}][weight]" placeholder="Berat dalam gram" required>
+                </div>
+                <div class="form-group">
+                    <label>Foto Variasi</label>
+                    <input type="file" name="variations[${variationIndex}][image]" accept="image/*">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>SKU (opsional)</label>
+                    <input type="text" name="variations[${variationIndex}][sku]" placeholder="Kode SKU unik">
+                </div>
+                <div class="form-group">
+                    <label>Status</label>
+                    <select name="variations[${variationIndex}][is_active]">
+                        <option value="1">Aktif</option>
+                        <option value="0">Nonaktif</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <button type="button" class="btn-remove-variation">Hapus Variasi</button>
+                </div>
+            </div>
+        `;
+
+        variationsWrapper.appendChild(variationBlock);
+    });
+
+    // Delegasi event untuk tombol Hapus Variasi & Tambah Atribut
+    document.body.addEventListener("click", function (e) {
+        if (e.target.classList.contains("btn-remove-variation")) {
+            e.target.closest(".variation-block").remove();
+        }
+
+        if (e.target.classList.contains("btn-add-attribute")) {
+            const variationBlock = e.target.closest(".variation-block");
+            const attributesContainer = variationBlock.querySelector(".variation-attributes");
+
+            const variationNumber = Array.from(variationsWrapper.children).indexOf(variationBlock);
+            
+            const newRow = document.createElement("div");
+            newRow.classList.add("variation-row", "mb-2", "flex", "gap-2");
+
+            newRow.innerHTML = `
+                <select name="variations[${variationNumber}][attributes][]" class="attribute-select" required>
+                    <option value="">-- Pilih Atribut --</option>
+                    ${getAttributesOptions()}
+                </select>
+
+                <select name="variations[${variationNumber}][options][]" class="option-select" required>
+                    <option value="">-- Pilih Opsi --</option>
+                </select>
+
+                <button type="button" class="btn-remove-row">-</button>
+            `;
+
+            attributesContainer.appendChild(newRow);
+        }
+
+        if (e.target.classList.contains("btn-remove-row")) {
+            e.target.closest(".variation-row").remove();
+        }
+    });
+
+    // Fungsi ambil opsi atribut dari blade (langsung render di JS)
+    function getAttributesOptions() {
+        return `
+            @foreach ($variationAttributes as $attribute)
+                <option value="{{ $attribute->id }}">{{ $attribute->name }}</option>
+            @endforeach
+        `;
+    }
 });
 </script>
 

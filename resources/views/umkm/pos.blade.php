@@ -254,13 +254,17 @@
                     <td>
                         {{ $product->name }}
                         @if($product->variations->count())
-                            <ul>
-                                @foreach($product->variations as $var)
+                            <ul class="mb-0 ps-3">
+                                @foreach($product->variations as $index => $var)
                                     <li>
-                                        {{ $var->name }} 
-                                        (Stok: {{ $var->stock }}, Rp {{ number_format($var->price, 0, ',', '.') }})
+                                        {{ $index + 1 }}.  
+                                        (Stok: {{ $var->stock }}, 
+                                        Rp {{ number_format($var->price, 0, ',', '.') }}, 
+                                        {{ $var->weight ?? 0 }} gr)
+                                        
                                         @if($var->options->count())
-                                            <small>
+                                            <br>
+                                            <small class="text-muted">
                                                 [
                                                 @foreach($var->options as $opt)
                                                     {{ $opt->attribute->name }}: {{ $opt->value }}@if(!$loop->last), @endif

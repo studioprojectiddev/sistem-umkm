@@ -532,43 +532,51 @@ class ProductController extends Controller
 
     public function variasiStore(Request $request)
     {
-        // dd($request->all());
-        $validated = $request->validate([
-            'product_id'   => 'required|exists:products,id',
-            'attributes'   => 'required|array',
-            'options'      => 'required|array',
-            'price'        => 'required|numeric|min:0',
-            'stock'        => 'required|integer|min:0',
-            'sku'          => 'nullable|string|max:100|unique:product_variations,sku',
-            'weight'       => 'required|numeric|min:0',
-            'image'        => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
-            'is_active'    => 'nullable|boolean',
+        // Validasi produk wajib ada
+        $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'variations' => 'required|array|min:1',
         ]);
 
-        $imagePath = null;
-        if ($request->hasFile('image')) {
-            $filename = time() . '_' . $request->file('image')->getClientOriginalName();
-            $request->file('image')->move(public_path('assets/images/variation'), $filename);
-            $imagePath = 'assets/images/variation/' . $filename;
-        }
+        foreach ($request->variations as $index => $variationData) {
+            // Validasi tiap variasi
+            $validated = validator($variationData, [
+                'attributes' => 'required|array|min:1',
+                'options'    => 'required|array|min:1',
+                'price'      => 'required|numeric|min:0',
+                'stock'      => 'required|integer|min:0',
+                'sku'        => 'nullable|string|max:100|unique:product_variations,sku',
+                'weight'     => 'required|numeric|min:0',
+                'image'      => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+                'is_active'  => 'nullable|boolean',
+            ])->validate();
 
-        $variation = ProductVariation::create([
-            'idpenginput' => auth()->id(),
-            'product_id' => $validated['product_id'],
-            'name'       => 'Variasi ' . $validated['product_id'],
-            'sku'        => $validated['sku'] ?? strtoupper(uniqid('SKU-')),
-            'price'      => $validated['price'],
-            'stock'      => $validated['stock'],
-            'weight'     => $validated['weight'],
-            'image'      => $imagePath,
-            'is_active'  => $request->has('is_active') ? 1 : 0,
-        ]);
+            // Upload gambar (jika ada)
+            $imagePath = null;
+            if (isset($variationData['image']) && $variationData['image'] instanceof \Illuminate\Http\UploadedFile) {
+                $filename = time() . '_' . $variationData['image']->getClientOriginalName();
+                $variationData['image']->move(public_path('assets/images/variation'), $filename);
+                $imagePath = 'assets/images/variation/' . $filename;
+            }
 
-        if (!empty($validated['options'])) {
-            foreach ($validated['options'] as $attributeId => $optionIds) {
-                foreach ((array) $optionIds as $optionId) { 
+            // Simpan data variasi
+            $variation = ProductVariation::create([
+                'idpenginput' => auth()->id(),
+                'product_id'  => $request->product_id,
+                'name'        => 'Variasi ' . ($index + 1),
+                'sku'         => $validated['sku'] ?? strtoupper(uniqid('SKU-')),
+                'price'       => $validated['price'],
+                'stock'       => $validated['stock'],
+                'weight'      => $validated['weight'],
+                'image'       => $imagePath,
+                'is_active'   => isset($variationData['is_active']) ? 1 : 0,
+            ]);
+
+            // Simpan opsi variasi
+            if (!empty($validated['options'])) {
+                foreach ((array) $validated['options'] as $optionId) {
                     ProductVariationOption::create([
-                        'idpenginput' => auth()->id(),
+                        'idpenginput'  => auth()->id(),
                         'variation_id' => $variation->id,
                         'option_id'    => $optionId,
                     ]);

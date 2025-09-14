@@ -37,21 +37,23 @@ class PosController extends Controller
             'unit'
         )->get();
 
-        // Tambahkan properti final_price langsung di controller
+        // Tambahkan properti tambahan
         $products->each(function ($product) {
+            // Final price (pakai promo kalau aktif)
             $product->final_price = ($product->is_promo && $product->promo_start <= now() && $product->promo_end >= now())
                 ? $product->promo_price
                 : $product->price;
 
-            // Siapkan variations jadi array siap pakai
-            $product->variation_json = $product->variations->map(function ($v) {
+            // Variasi → pakai nomor urut mulai dari 1, tambahkan weight (gram)
+            $product->variation_json = $product->variations->values()->map(function ($v, $index) {
                 return [
-                    "id"    => $v->id,
-                    "name"  => $v->name,
-                    "price" => $v->price,
-                    "stock" => $v->stock,
+                    "no"     => $index + 1, // nomor urut mulai dari 1
+                    "name"   => $v->name,
+                    "price"  => $v->price,
+                    "stock"  => $v->stock,
+                    "weight" => $v->weight ?? 0, // dalam gram, default 0 kalau null
                 ];
-            })->values()->toArray();
+            })->toArray();
         });
 
         $cart = session()->get('cart', []);

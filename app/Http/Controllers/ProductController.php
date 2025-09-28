@@ -1,7 +1,10 @@
 <?php
 
 namespace App\Http\Controllers;
+
+use Illuminate\Support\Facades\DB;
 use App\Models\Product;
+use App\Models\ProductSalesSummary;
 use App\Models\Category;
 use App\Models\ProductVariation;
 use App\Models\ProductVariationOption;
@@ -661,6 +664,81 @@ class ProductController extends Controller
         $product->delete();
 
         return redirect()->route('umkm.product')->with('success', 'Produk berhasil dihapus');
+    }
+
+    public function detailPage(Request $request)
+    {
+        $query = Product::with([
+            // Hitung jumlah varian & stok tiap varian
+            'variations' => function($q) {
+                $q->select('id','product_id','name','sku','price','stock')
+                ->where('is_active', 1);
+            },
+            // Ringkasan penjualan dari tabel product_sales_summary
+            'salesSummary' => function($q) {
+                $q->select(
+                    'product_id',
+                    DB::raw('COALESCE(SUM(total_qty),0) as total_qty'),
+                    DB::raw('COALESCE(SUM(total_sales),0) as total_sales')
+                )
+                ->groupBy('product_id');
+            }
+        ])
+        ->select('id','name','sku','price','stock','thumbnail','is_active')
+        ->when($request->q, function($q) use ($request) {
+            $q->where('name','like','%'.$request->q.'%')
+            ->orWhere('sku','like','%'.$request->q.'%');
+        })
+        ->orderBy('name');
+
+        $products = $query->paginate(20);
+
+        $products->transform(function($p) {
+            $p->variant_count = $p->variations->count();
+        
+            $stokVarian  = $p->variations->sum('stock');
+            $stokInduk   = $p->stock ?? 0;
+        
+            // 🔹 stok_total = stok induk + stok varian
+            $p->stock_total   = $stokInduk + $stokVarian;
+        
+            // 🔹 stok produk (tanpa varian)
+            $p->stock_product = $stokInduk;
+        
+            $p->total_qty     = optional($p->salesSummary->first())->total_qty ?? 0;
+            $p->total_sales   = optional($p->salesSummary->first())->total_sales ?? 0;
+        
+            return $p;
+        });
+                
+
+        return view('umkm.products.detailPage', compact('products'));
+    }
+
+    public function detail($id)
+    {
+        $product = Product::with(['variations' => function($q){
+            $q->select('id','product_id','name','price','stock')
+            ->withSum('transactionItems', 'quantity'); // menambahkan atribut transaction_items_sum_quantity
+        }])->findOrFail($id);
+
+        $variations = $product->variations->map(function($v){
+            return [
+                'id'         => $v->id,
+                'product_id' => $v->product_id,
+                'name'       => $v->name,
+                'price'      => $v->price,
+                'stock'      => $v->stock,
+                // withSum menghasilkan properti transaction_items_sum_quantity
+                'sold'       => (int) ($v->transaction_items_sum_quantity ?? 0),
+            ];
+        })->values();
+
+        return response()->json([
+            'id'         => $product->id,
+            'name'       => $product->name,
+            'variations' => $variations,
+        ]);
     }
 
 }

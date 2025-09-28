@@ -31,10 +31,12 @@ Route::middleware(['auth','umkm'])->group(function () {
     // Produk UMKM
     Route::get('/umkm/product', [ProductController::class, 'index'])->name('umkm.product');
     Route::get('/umkm/product/{id}', [ProductController::class, 'index'])->name('umkm.product.edit');
+    Route::get('/umkm/productdetail', [ProductController::class,'detailPage'])->name('umkm.product.product_detail');
     Route::resource('/umkm/products', ProductController::class);
     Route::post('/umkm/product', [ProductController::class, 'store'])->name('umkm.product.store');
     Route::put('/umkm/product/{id}', [ProductController::class, 'update'])->name('umkm.product.update');
     Route::delete('/umkm/product/{id}', [ProductController::class, 'destroy'])->name('umkm.product.destroy');
+    Route::get('/productdetail/{id}', [ProductController::class, 'detail'])->name('umkm.product.detail');
 
     // Kategori UMKM (semua via ProductController)
     Route::get('/umkm/category', [ProductController::class, 'category'])->name('umkm.category');

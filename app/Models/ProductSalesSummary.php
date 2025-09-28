@@ -25,4 +25,5 @@ class ProductSalesSummary extends Model
     {
         return $this->belongsTo(Product::class);
     }
+    
 }

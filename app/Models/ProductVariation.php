@@ -35,6 +35,11 @@ class ProductVariation extends Model
             'variation_id',
             'option_id'
         )->with('attribute');
-    }    
+    }   
+    
+    public function transactionItems()
+    {
+        return $this->hasMany(TransactionItem::class, 'variation_id');
+    }
 
 }

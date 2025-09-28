@@ -116,4 +116,9 @@ class Product extends Model
         });
     }
 
+    public function salesSummary()
+    {
+        return $this->hasMany(ProductSalesSummary::class, 'product_id');
+    }
+
 }

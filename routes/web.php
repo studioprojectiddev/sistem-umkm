@@ -56,6 +56,13 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::post('/umkm/pos/checkout', [PosController::class, 'checkout'])->name('umkm.pos.checkout');
     Route::get('/umkm/pos/products', [PosController::class, 'getProducts'])->name('umkm.pos.products');
     Route::post('/umkm/pos/add-variation/{id}', [PosController::class, 'addVariationToCart'])->name('umkm.pos.addVariation');
+    Route::post('/umkm/pos/discount/update', [PosController::class, 'updateDiscount'])->name('umkm.pos.discount');
+    Route::post('/umkm/pos/stock/add', [PosController::class, 'addStock'])->name('umkm.pos.add');
+    Route::post('/api/stock/update', [PosController::class, 'storeTransaction'])->name('stock.transaction.store');
+    Route::get('/api/stock/transactions', [PosController::class, 'listTransactions'])->name('stock.transaction.list');
+    Route::get('/stock/summary', [PosController::class, 'summary']);
+    Route::get('/api/report/products', [PosController::class, 'productReport']);
+    Route::get('/umkm/pos/receipt/{id}', [PosController::class, 'receipt'])->name('umkm.pos.receipt');
 
 });
 

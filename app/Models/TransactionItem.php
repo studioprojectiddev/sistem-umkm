@@ -13,6 +13,7 @@ class TransactionItem extends Model
         'transaction_id',
         'idpenginput',
         'product_id',
+        'variation_id',
         'quantity',
         'price',
         'discount',
@@ -28,5 +29,10 @@ class TransactionItem extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function variation()
+    {
+        return $this->belongsTo(ProductVariation::class, 'variation_id');
     }
 }

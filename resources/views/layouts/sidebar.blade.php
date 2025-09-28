@@ -37,6 +37,7 @@
                 <li><a href="{{ route('umkm.product') }}">Daftar & Variasi Produk</a></li>
                 <li><a href="" >Detail Produk</a></li>
                 <li><a href="" >Manajemen Stok</a></li>
+                <li><a href="" >AI Insight</a></li>
                 <li><a href="" >Analisis Produk</a></li>
                 <li><a href="" >Multi-Gudang</a></li>
             </ul>

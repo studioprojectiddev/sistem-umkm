@@ -17,11 +17,12 @@
             <li><a href="#"><i class='bx bxs-user-circle icon' ></i> Profile</a></li>
             <li><a href="#"><i class='bx bxs-cog' ></i> Settings</a></li>
             <li>
-                <form method="POST" action="{{ route('logout') }}">
-                    @csrf
-                    <button type="submit" style="background:none; border:none; padding:0; cursor:pointer; color:inherit;">
+                <a href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
                     <i class='bx bxs-log-out-circle'></i> Logout
-                    </button>
+                </a>
+
+                <form id="logout-form" action="{{ route('logout') }}" method="POST" style="display: none;">
+                    @csrf
                 </form>
             </li>
         </ul>

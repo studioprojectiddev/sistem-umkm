@@ -59,19 +59,31 @@
     display: none;
   }
   #sidebar .brand {
-    font-size: 24px;
     display: flex;
-    align-items: center;
-    height: 64px;
-    font-weight: 700;
-    color: #222F3F;
+    justify-content: center; /* Ratakan horizontal */
+    align-items: center;     /* Ratakan vertikal */
+    height: 80px;            /* Sedikit lebih tinggi agar lega */
+    background: #fff;
     position: sticky;
     top: 0;
     left: 0;
     z-index: 100;
-    background: #fff;
-    transition: all .3s ease;
-    padding: 0 6px;
+    transition: all 0.3s ease;
+    padding: 10px 0;         /* Tambah jarak vertikal */
+  }
+
+  /* Gaya untuk logo */
+  #sidebar .brand img {
+      width: 130px;             /* Lebih besar */
+      height: 130px;
+      object-fit: contain;     /* Menjaga proporsi logo */
+      margin: 0 auto;
+      transition: transform 0.3s ease;
+  }
+
+  /* Animasi halus saat hover */
+  #sidebar .brand:hover img {
+      transform: scale(1.08);
   }
   #sidebar .icon {
     min-width: 48px;

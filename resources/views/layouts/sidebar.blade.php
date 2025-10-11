@@ -1,8 +1,8 @@
 <section id="sidebar">
     <a href="#" class="brand">
-    <img src="{{ asset('assets/images/logo_only.png') }}" alt="Logo" class="icon" style="width: 40px; height: 40px; object-fit: cover; margin-right: 8px;">
-        <span style="font-size:20px">StudioProjectID</span>
+        <img src="{{ asset('assets/images/icon_imanuel2.png') }}" alt="Logo" style="margin-top:40px">
     </a>
+
     <ul class="side-menu">
         <!-- dashboard -->
         <li>

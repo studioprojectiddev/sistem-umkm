@@ -10,6 +10,8 @@ use App\Models\ProductVariation;
 use App\Models\ProductVariationOption;
 use App\Models\VariationAttribute;
 use App\Models\VariationOption; 
+use App\Models\Transaction;
+use App\Models\TransactionItem;
 use Illuminate\Validation\Rule;
 use Picqer\Barcode\BarcodeGeneratorPNG;
 use Illuminate\Support\Str;
@@ -739,6 +741,69 @@ class ProductController extends Controller
             'name'       => $product->name,
             'variations' => $variations,
         ]);
+    }
+
+    public function managementstock(Request $request)
+    {
+        $q        = $request->q;
+        $category = $request->category;
+
+        // ==== DATA PRODUK ====
+        $products = Product::query()
+            ->with(['variations:id,product_id,name,stock,price'])
+            ->when($q, function ($query) use ($q) {
+                $query->where(function ($x) use ($q) {
+                    $x->where('name', 'like', "%{$q}%")
+                    ->orWhere('sku',  'like', "%{$q}%");
+                });
+            })
+            ->when($category, fn($q) => $q->where('category_id', $category))
+            ->paginate(20);
+
+        // ==== RINGKASAN STOK ====
+        // total stok induk dari semua produk
+        $productStock = Product::sum('stock');
+
+        // total stok semua varian
+        $variantStock = ProductVariation::sum('stock');
+
+        // total entitas (produk non-varian + setiap varian) yang stoknya < 10
+        $lowStock = Product::with('variations')->get()->reduce(function ($carry, $p) {
+            // produk induk tanpa varian
+            $low = ($p->variations->isEmpty() && $p->stock < 10) ? 1 : 0;
+
+            // setiap varian yang stoknya < 10
+            $low += $p->variations->filter(fn($v) => $v->stock < 10)->count();
+
+            return $carry + $low;
+        }, 0);
+
+        $summary = [
+            'product_stock' => $productStock,
+            'variant_stock' => $variantStock,
+            'low_stock'     => $lowStock,
+        ];
+
+        // ==== TRANSFORMASI DATA PRODUK ====
+        $products->getCollection()->transform(function ($p) {
+            $variantStock      = $p->variations->sum('stock');
+            $p->stock_variants = $variantStock;
+            $p->stock_product  = $p->stock;                  // stok induk
+            $p->stock_total    = $p->stock + $variantStock;  // total gabungan
+
+            // total terjual (produk + seluruh varian)
+            $ids = $p->variations->pluck('id')->toArray();
+            $p->total_sold = TransactionItem::where(function ($q) use ($p, $ids) {
+                    $q->where('product_id', $p->id)
+                    ->orWhereIn('variation_id', $ids);
+                })
+                ->whereHas('transaction', fn($t) => $t->where('status', 'completed'))
+                ->sum('quantity');
+
+            return $p;
+        });
+
+        return view('umkm.products.managementstock', compact('products', 'summary'));
     }
 
 }

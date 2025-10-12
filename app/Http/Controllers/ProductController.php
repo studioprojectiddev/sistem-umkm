@@ -1023,5 +1023,110 @@ class ProductController extends Controller
         }
     }
 
+    public function analytic()
+    {
+        // === 1️⃣ Total Produk (gabungan variasi & non-variasi) ===
+        $totalProducts = DB::table('products')
+            ->leftJoin('product_variations', 'products.id', '=', 'product_variations.product_id')
+            ->select('products.id as product_id', 'product_variations.id as variation_id')
+            ->get()
+            ->count();
+
+        // === 2️⃣ Total Penjualan & Pendapatan ===
+        $salesData = DB::table('transaction_items')
+            ->join('transactions', 'transactions.id', '=', 'transaction_items.transaction_id')
+            ->where('transactions.status', 'completed')
+            ->where('transactions.transaction_type', 'sale')
+            ->selectRaw('
+                COALESCE(transaction_items.variation_id, transaction_items.product_id) as item_ref,
+                SUM(transaction_items.quantity) as total_sold,
+                SUM(transaction_items.subtotal) as total_revenue
+            ')
+            ->groupBy('item_ref')
+            ->get();
+
+        $totalSales = $salesData->sum('total_sold');
+        $totalRevenue = $salesData->sum('total_revenue');
+
+        // === 3️⃣ Produk dengan Stok Rendah ===
+        $lowStockProducts = DB::table('products')
+            ->leftJoin('product_variations', 'products.id', '=', 'product_variations.product_id')
+            ->select(
+                DB::raw("CASE 
+                            WHEN product_variations.name IS NOT NULL 
+                            THEN CONCAT(products.name, ' - ', product_variations.name)
+                            ELSE products.name
+                        END AS full_name"),
+                DB::raw('COALESCE(product_variations.stock, products.stock) as stock')
+            )
+            ->whereRaw('COALESCE(product_variations.stock, products.stock) <= 5')
+            ->get();
+
+        $lowStockCount = $lowStockProducts->count();
+
+        // === 4️⃣ Produk Terlaris ===
+        $topSelling = DB::table('transaction_items')
+            ->join('transactions', 'transactions.id', '=', 'transaction_items.transaction_id')
+            ->leftJoin('products', 'products.id', '=', 'transaction_items.product_id')
+            ->leftJoin('product_variations', 'product_variations.id', '=', 'transaction_items.variation_id')
+            ->where('transactions.status', 'completed')
+            ->where('transactions.transaction_type', 'sale')
+            ->selectRaw("
+                CASE 
+                    WHEN product_variations.name IS NOT NULL 
+                    THEN CONCAT(products.name, ' - ', product_variations.name)
+                    ELSE products.name
+                END AS product_name,
+                SUM(transaction_items.quantity) as total_sold,
+                SUM(transaction_items.subtotal) as total_revenue
+            ")
+            ->groupBy('product_name')
+            ->orderByDesc('total_sold')
+            ->limit(5)
+            ->get();
+
+        // === 5️⃣ Produk Kurang Laku ===
+        $lowSelling = DB::table('transaction_items')
+            ->join('transactions', 'transactions.id', '=', 'transaction_items.transaction_id')
+            ->leftJoin('products', 'products.id', '=', 'transaction_items.product_id')
+            ->leftJoin('product_variations', 'product_variations.id', '=', 'transaction_items.variation_id')
+            ->where('transactions.status', 'completed')
+            ->where('transactions.transaction_type', 'sale')
+            ->selectRaw("
+                CASE 
+                    WHEN product_variations.name IS NOT NULL 
+                    THEN CONCAT(products.name, ' - ', product_variations.name)
+                    ELSE products.name
+                END AS product_name,
+                SUM(transaction_items.quantity) as total_sold,
+                SUM(transaction_items.subtotal) as total_revenue
+            ")
+            ->groupBy('product_name')
+            ->orderBy('total_sold', 'asc')
+            ->limit(5)
+            ->get();
+
+        // === 6️⃣ Tren Penjualan 7 Hari Terakhir ===
+        $salesTrend = DB::table('transactions')
+            ->where('status', 'completed')
+            ->where('transaction_type', 'sale')
+            ->whereBetween('transaction_date', [Carbon::now()->subDays(7), Carbon::now()])
+            ->selectRaw('DATE(transaction_date) as date, SUM(total) as total_amount')
+            ->groupBy('date')
+            ->orderBy('date', 'asc')
+            ->get();
+
+        // === 7️⃣ Return ke View ===
+        return view('umkm.products.analytic', [
+            'totalProducts' => $totalProducts,
+            'totalSales' => $totalSales,
+            'totalRevenue' => $totalRevenue,
+            'lowStockCount' => $lowStockCount,
+            'lowStockProducts' => $lowStockProducts,
+            'topSelling' => $topSelling,
+            'lowSelling' => $lowSelling,
+            'salesTrend' => $salesTrend,
+        ]);
+    }
 
 }

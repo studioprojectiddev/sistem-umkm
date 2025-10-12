@@ -58,17 +58,20 @@
   #sidebar::-webkit-scrollbar {
     display: none;
   }
-  #sidebar .brand {
-    display: flex;
-    justify-content: center; /* Tengah horizontal */
-    align-items: center; /* Tengah vertikal */
-    height: 100px; /* Sesuaikan tinggi area logo */
-    background: #fff;
-    position: relative; /* Ganti dari sticky agar tidak ikut tumpang tindih */
-    z-index: 10;
-    overflow: hidden; /* Mencegah logo keluar area */
-    padding: 10px 0;
-    border-bottom: 1px solid #e5e5e5; /* agar rapi */
+  #sidebar .brand { 
+    font-size: 24px; 
+    display: flex; 
+    align-items: center; 
+    height: 64px; 
+    font-weight: 700; 
+    color: #222F3F; 
+    position: sticky;
+    top: 0; 
+    left: 0; 
+    z-index: 100; 
+    background: #fff; 
+    transition: all .3s ease; 
+    padding: 0 6px; 
   }
   
   /* Logo di dalam brand */

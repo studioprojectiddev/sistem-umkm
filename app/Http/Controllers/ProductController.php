@@ -806,4 +806,44 @@ class ProductController extends Controller
         return view('umkm.products.managementstock', compact('products', 'summary'));
     }
 
+    public function managementupdate(Request $request, $id)
+    {
+        DB::beginTransaction();
+        try {
+            // Update data produk utama
+            $product = Product::findOrFail($id);
+            $product->update([
+                'name'  => $request->name,
+                'sku'   => $request->sku,
+                'price' => $request->price,
+                'stock' => $request->stock,
+            ]);
+
+            // Update variasi
+            if ($request->has('variations')) {
+                foreach ($request->variations as $var) {
+                    ProductVariation::where('id', $var['id'])->update([
+                        'name'  => $var['name'],
+                        'price' => $var['price'],
+                        'stock' => $var['stock'],
+                    ]);
+                }
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Produk berhasil diperbarui!'
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui produk: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
 }

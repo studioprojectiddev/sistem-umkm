@@ -90,6 +90,36 @@ h1.title {
 }
 .filter-row button:hover { background: #2980b9; }
 
+.form-control {
+    width: 70px;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: #2c7be5;
+    background: #fff;
+    outline: none;
+    transition: all .25s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+
+.form-control:focus {
+    border-color: #2c7be5;
+    box-shadow: 0 0 6px rgba(44,123,229,0.35);
+}
+
+/* Hilangkan default panah spinner biar lebih clean */
+.form-control::-webkit-inner-spin-button, 
+.form-control::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.form-control {
+    -moz-appearance: textfield; /* Firefox */
+}
+
 /* ============ TABLE ============ */
 .table-container {
     background: #fff;
@@ -207,21 +237,62 @@ h1.title {
     width: 100%;
     border-collapse: collapse;
     margin-bottom: 12px;
+    table-layout: fixed; /* penting supaya kolom proporsional */
 }
+
 .detail-table th,
 .detail-table td {
     padding: 8px 10px;
     border: 1px solid #ddd;
     text-align: left;
+    vertical-align: middle;
+    word-wrap: break-word;
 }
+
 .detail-table th {
     background: #f7f7f7;
-    width: 40%;
+    font-weight: 600;
 }
+
+.detail-table input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    outline: none;
+}
+
+.detail-table input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 1px #3b82f6;
+}
+
+.modal-content {
+    max-height: 80vh;
+    overflow-y: auto; /* agar tabel bisa discroll jika tinggi */
+}
+
 .mt-2 { margin-top: 15px; }
 @keyframes fadeIn {
     from {opacity: 0; transform: translateY(-10px);}
     to   {opacity: 1; transform: translateY(0);}
+}
+
+.form-actions {
+    text-align: right;
+    margin-top: 15px;
+}
+.btn-save {
+    background: #28a745;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+.btn-save:hover {
+    background: #218838;
 }
 
 /* ============ RESPONSIVE ============ */
@@ -320,13 +391,16 @@ h1.title {
                             data-variations='@json($product->variations)'
                             >Detail</a>
                             <a href="#"
-                            class="btn btn-warning btn-edit"
-                            data-id="{{ $product->id }}"
-                            data-name="{{ $product->name }}"
-                            data-sku="{{ $product->sku }}"
-                            data-price="{{ $product->price }}"
-                            data-stock="{{ $product->stock }}"
-                            data-url="{{ route('products.update', $product->id) }}">Edit</a>
+                                class="btn btn-warning btn-edit"
+                                data-id="{{ $product->id }}"
+                                data-name="{{ $product->name }}"
+                                data-sku="{{ $product->sku }}"
+                                data-price="{{ $product->price }}"
+                                data-stock="{{ $product->stock }}"
+                                data-variations='@json($product->variations)'
+                                data-url="{{ route('umkm.product.management_update', $product->id) }}">Edit
+                            </a>
+
                         </div>
                     </td>
                 </tr>
@@ -381,26 +455,49 @@ h1.title {
             <h3>Edit Produk</h3>
             <button class="close-btn" id="closeEdit">✖</button>
         </div>
+
         <div class="modal-content">
             <form id="editForm" method="POST" action="">
                 @csrf
                 @method('PUT')
                 <input type="hidden" name="id" id="editId">
 
-                <label>Nama Produk</label>
-                <input type="text" name="name" id="editName" required>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Nama Produk</label>
+                        <input type="text" name="name" id="editName" required>
+                    </div>
+                    <div class="form-group" style="margin-top:10px;">
+                        <label>No. SKU</label>
+                        <input type="text" name="sku" id="editSku" required>
+                    </div>
+                    <div class="form-group" style="margin-top:10px;">
+                        <label>Harga Produk</label>
+                        <input type="number" name="price" id="editPrice" required>
+                    </div>
+                    <div class="form-group" style="margin-top:10px;">
+                        <label>Stok Produk</label>
+                        <input type="number" name="stock" id="editStock" required>
+                    </div>
 
-                <label>SKU</label>
-                <input type="text" name="sku" id="editSku" required>
-
-                <label>Harga</label>
-                <input type="number" name="price" id="editPrice" required>
-
-                <label>Stok Produk</label>
-                <input type="number" name="stock" id="editStock" required>
+                    <!-- VARIASI -->
+                    <div id="variantSection" class="mt-3" style="margin-top:10px;">
+                        <h4>Daftar Varian</h4>
+                        <table class="detail-table" id="variantTableEdit">
+                            <thead>
+                                <tr>
+                                    <th>Nama Varian</th>
+                                    <th>Harga</th>
+                                    <th>Stok</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
 
                 <div class="form-actions">
-                    <button type="submit" class="btn-save">Simpan Perubahan</button>
+                    <button type="submit" class="btn-save">💾 Simpan Perubahan</button>
                 </div>
             </form>
         </div>
@@ -457,33 +554,120 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    const modalEdit  = document.getElementById('modalEdit');
-    const closeEdit  = document.getElementById('closeEdit');
-    const formEdit   = document.getElementById('editForm');
+    const modalEdit = document.getElementById('modalEdit');
+    const closeEdit = document.getElementById('closeEdit');
+    const variantTable = document.querySelector('#variantTableEdit tbody');
+    const form = document.getElementById('editForm');
 
+    // === Buka Modal Edit ===
     document.querySelectorAll('.btn-edit').forEach(btn => {
-        btn.addEventListener('click', e => {
+        btn.addEventListener('click', function(e) {
             e.preventDefault();
+            const data = this.dataset;
 
-            // isi form dengan data produk
-            document.getElementById('editId').value    = btn.dataset.id;
-            document.getElementById('editName').value  = btn.dataset.name;
-            document.getElementById('editSku').value   = btn.dataset.sku;
-            document.getElementById('editPrice').value = btn.dataset.price;
-            document.getElementById('editStock').value = btn.dataset.stock;
+            // isi form produk utama
+            form.action = data.url;
+            document.getElementById('editId').value = data.id;
+            document.getElementById('editName').value = data.name;
+            document.getElementById('editSku').value = data.sku;
+            document.getElementById('editPrice').value = data.price;
+            document.getElementById('editStock').value = data.stock;
 
-            // set action form
-            formEdit.action = btn.dataset.url;
+            // tampilkan varian (kalau ada)
+            variantTable.innerHTML = '';
+            const variants = JSON.parse(data.variations || '[]');
+
+            if (variants.length > 0) {
+                variants.forEach(v => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>
+                            <input type="hidden" name="variations[${v.id}][id]" value="${v.id}">
+                            <input type="text" name="variations[${v.id}][name]" value="${v.name}" class="variant-input">
+                        </td>
+                        <td>
+                            <input type="number" name="variations[${v.id}][price]" value="${v.price}" class="variant-input">
+                        </td>
+                        <td>
+                            <input type="number" name="variations[${v.id}][stock]" value="${v.stock}" class="variant-input">
+                        </td>
+                    `;
+                    variantTable.appendChild(tr);
+                });
+            } else {
+                variantTable.innerHTML = `
+                    <tr><td colspan="3" style="text-align:center;color:#777">Tidak ada varian</td></tr>
+                `;
+            }
 
             modalEdit.classList.remove('hidden');
         });
     });
 
-    // tutup modal
+    // === Tutup Modal ===
     closeEdit.addEventListener('click', () => modalEdit.classList.add('hidden'));
     modalEdit.addEventListener('click', e => {
         if (e.target === modalEdit) modalEdit.classList.add('hidden');
     });
+
+    // === Submit Edit Form (AJAX PUT) ===
+    form.addEventListener('submit', async e => {
+        e.preventDefault();
+        const formData = new FormData(form);
+
+        Swal.fire({
+            title: 'Menyimpan...',
+            text: 'Mohon tunggu, sedang memperbarui data.',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    'X-HTTP-Method-Override': 'PUT',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'Accept': 'application/json',
+                },
+                credentials: 'include',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Berhasil!',
+                    text: result.message,
+                    timer: 1500,
+                    showConfirmButton: false
+                });
+
+                modalEdit.classList.add('hidden');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Gagal!',
+                    text: result.message || 'Terjadi kesalahan saat memperbarui data.'
+                });
+            }
+        } catch (err) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Kesalahan!',
+                text: err.message || 'Gagal mengirim data ke server.'
+            });
+        }
+    });
 });
 </script>
+
 @endsection

@@ -38,6 +38,7 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::delete('/umkm/product/{id}', [ProductController::class, 'destroy'])->name('umkm.product.destroy');
     Route::get('/productdetail/{id}', [ProductController::class, 'detail'])->name('umkm.product.detail');
     Route::get('/managementstock', [ProductController::class, 'managementstock'])->name('umkm.product.management_stock');
+    Route::put('/managementstock/{id}', [ProductController::class, 'managementupdate'])->name('umkm.product.management_update');
 
     // Kategori UMKM (semua via ProductController)
     Route::get('/umkm/category', [ProductController::class, 'category'])->name('umkm.category');

@@ -273,6 +273,11 @@ h1.title {
     overflow-y: auto; /* agar tabel bisa discroll jika tinggi */
 }
 
+.pagination-wrapper {
+    margin-top: 24px;
+    text-align: center;
+}
+
 .mt-2 { margin-top: 15px; }
 @keyframes fadeIn {
     from {opacity: 0; transform: translateY(-10px);}
@@ -412,7 +417,7 @@ h1.title {
             </tbody>
         </table>
 
-        <div style="margin-top:20px;">
+        <div class="pagination-wrapper" style="margin-top:20px;">
             {{ $products->withQueryString()->links() }}
         </div>
     </div>

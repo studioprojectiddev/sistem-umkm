@@ -13,6 +13,7 @@ use App\Models\VariationOption;
 use App\Models\Transaction;
 use App\Models\TransactionItem;
 use Illuminate\Validation\Rule;
+use Carbon\Carbon;
 use Picqer\Barcode\BarcodeGeneratorPNG;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
@@ -757,8 +758,9 @@ class ProductController extends Controller
                     ->orWhere('sku',  'like', "%{$q}%");
                 });
             })
-            ->when($category, fn($q) => $q->where('category_id', $category))
-            ->paginate(20);
+            ->when($category, fn($q) => $q->where('category_id', $category));
+
+        $products = $products->paginate(20);
 
         // ==== RINGKASAN STOK ====
         // total stok induk dari semua produk
@@ -845,5 +847,181 @@ class ProductController extends Controller
             ], 500);
         }
     }
+
+    public function insight()
+    {
+        try {
+            // === [1️⃣] Ambil Semua Produk ===
+            $baseProducts = DB::table('products')
+                ->select(
+                    'products.id as product_id',
+                    'products.name as product_name',
+                    'products.price as base_price',
+                    'products.stock as base_stock'
+                )
+                ->get();
+
+            // === [2️⃣] Ambil Variasi Produk (jika ada) ===
+            $variations = DB::table('product_variations')
+                ->join('products', 'product_variations.product_id', '=', 'products.id')
+                ->select(
+                    'products.id as product_id',
+                    'products.name as product_name',
+                    'product_variations.id as variation_id',
+                    'product_variations.name as variation_name',
+                    'product_variations.price as variation_price',
+                    'product_variations.stock as variation_stock'
+                )
+                ->get();
+
+            // === Gabungkan keduanya (produk + variasi) ===
+            $products = $baseProducts->map(function ($p) {
+                // produk tanpa variasi
+                return (object)[
+                    'product_id' => $p->product_id,
+                    'product_name' => $p->product_name,
+                    'variation_id' => null,
+                    'variation_name' => null,
+                    'final_name' => $p->product_name,
+                    'final_price' => $p->base_price,
+                    'final_stock' => $p->base_stock,
+                ];
+            })->merge(
+                $variations->map(function ($v) {
+                    // variasi produk
+                    return (object)[
+                        'product_id' => $v->product_id,
+                        'product_name' => $v->product_name,
+                        'variation_id' => $v->variation_id,
+                        'variation_name' => $v->variation_name,
+                        'final_name' => "{$v->product_name} - {$v->variation_name}",
+                        'final_price' => $v->variation_price,
+                        'final_stock' => $v->variation_stock,
+                    ];
+                })
+            );
+
+            if ($products->isEmpty()) {
+                return view('umkm.products.insight', [
+                    'message' => 'Belum ada produk untuk dianalisis.',
+                    'insights' => [],
+                    'topProducts' => [],
+                    'lowSales' => [],
+                    'lowStock' => [],
+                    'predictions' => [],
+                ]);
+            }
+
+            // === [3️⃣] Ambil Data Penjualan 30 Hari Terakhir ===
+            $sales = DB::table('transaction_items')
+                ->join('transactions', 'transactions.id', '=', 'transaction_items.transaction_id')
+                ->where('transactions.status', 'completed')
+                ->where('transactions.transaction_type', 'sale')
+                ->where('transactions.transaction_date', '>=', Carbon::now()->subDays(30))
+                ->select(
+                    DB::raw('COALESCE(transaction_items.variation_id, transaction_items.product_id) as item_ref'),
+                    DB::raw('SUM(transaction_items.quantity) as total_sold'),
+                    DB::raw('SUM(transaction_items.subtotal) as total_income')
+                )
+                ->groupBy('item_ref')
+                ->get();
+
+            // === [4️⃣] Gabungkan Produk & Data Penjualan ===
+            $merged = $products->map(function ($p) use ($sales) {
+                $refId = $p->variation_id ?? $p->product_id;
+                $saleData = $sales->firstWhere('item_ref', $refId);
+
+                $p->total_sold = $saleData->total_sold ?? 0;
+                $p->total_income = $saleData->total_income ?? 0;
+
+                return $p;
+            });
+
+            // === [5️⃣] Analisis Produk ===
+            $topProducts = $merged->sortByDesc('total_sold')->take(5)->values();
+            $lowSales = $merged->filter(fn($p) => $p->total_sold < 3)->take(5)->values();
+            $lowStock = $merged->filter(fn($p) => $p->final_stock <= 5)->values();
+
+            // === [6️⃣] Saran Harga Berdasarkan Tren Penjualan ===
+            $priceSuggestions = $merged->filter(fn($p) => $p->total_sold > 10)
+                ->map(function ($p) {
+                    $suggested = round($p->final_price * 1.05, 0);
+                    return [
+                        'product' => $p->final_name,
+                        'old_price' => $p->final_price,
+                        'suggested_price' => $suggested,
+                        'reason' => 'Permintaan tinggi, pertimbangkan kenaikan 5%',
+                    ];
+                })
+                ->values();
+
+            // === [7️⃣] Prediksi Penjualan Minggu Depan ===
+            $predictions = $merged->map(function ($p) {
+                $avgSales = $p->total_sold / 4; // rata-rata per minggu
+                $predictedSales = round($avgSales * 1.1, 1); // naik 10%
+                $predictedStock = max(0, $p->final_stock - $avgSales);
+
+                return [
+                    'product' => $p->final_name,
+                    'predicted_sales' => $predictedSales,
+                    'predicted_stock' => $predictedStock,
+                ];
+            });
+
+            // === [8️⃣] Insight Otomatis ===
+            $insights = collect();
+
+            if ($topProducts->isNotEmpty()) {
+                $top = $topProducts->first();
+                $insights->push([
+                    'type' => '🔥 Produk Terlaris',
+                    'detail' => "{$top->final_name} terjual {$top->total_sold} unit dalam 30 hari terakhir.",
+                ]);
+            }
+
+            foreach ($lowStock as $p) {
+                $insights->push([
+                    'type' => '⚠️ Stok Menipis',
+                    'detail' => "\"{$p->final_name}\" hanya tersisa {$p->final_stock} unit.",
+                ]);
+            }
+
+            foreach ($priceSuggestions as $s) {
+                $insights->push([
+                    'type' => '💰 Saran Harga',
+                    'detail' => "{$s['product']}: naikkan harga dari Rp{$s['old_price']} → Rp{$s['suggested_price']} ({$s['reason']}).",
+                ]);
+            }
+
+            foreach ($predictions as $p) {
+                $insights->push([
+                    'type' => '📈 Prediksi Penjualan',
+                    'detail' => "{$p['product']}: diprediksi terjual {$p['predicted_sales']} unit minggu depan (stok sisa ~{$p['predicted_stock']}).",
+                ]);
+            }
+
+            // === [9️⃣] Kirim ke View ===
+            return view('umkm.products.insight', [
+                'message' => null,
+                'insights' => $insights,
+                'topProducts' => $topProducts,
+                'lowSales' => $lowSales,
+                'lowStock' => $lowStock,
+                'predictions' => $predictions,
+            ]);
+
+        } catch (\Exception $e) {
+            // === [🔟] Error Handling ===
+            return view('umkm.products.insight', [
+                'message' => 'Terjadi kesalahan saat memuat data: ' . $e->getMessage(),
+                'insights' => [],
+                'topProducts' => [],
+                'lowSales' => [],
+                'lowStock' => [],
+                'predictions' => [],
+            ]);
+        }
+    }
+
 
 }

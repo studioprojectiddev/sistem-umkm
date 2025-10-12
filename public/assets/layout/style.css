@@ -58,20 +58,18 @@
   #sidebar::-webkit-scrollbar {
     display: none;
   }
-  #sidebar .brand { 
-    font-size: 24px; 
-    display: flex; 
-    align-items: center; 
-    height: 64px; 
-    font-weight: 700; 
-    color: #222F3F; 
+  #sidebar .brand {
+    display: flex;
+    justify-content: center;   /* ⬅️ Ratakan horizontal */
+    align-items: center;       /* ⬅️ Ratakan vertikal */
+    height: 100px;             /* ⬅️ Biar muat logo */
+    background: #fff;
     position: sticky;
-    top: 0; 
-    left: 0; 
-    z-index: 100; 
-    background: #fff; 
-    transition: all .3s ease; 
-    padding: 0 6px; 
+    top: 0;
+    left: 0;
+    z-index: 100;
+    transition: all 0.3s ease;
+    padding: 0;                /* ⬅️ Hilangkan padding agar benar-benar center */
   }
   
   /* Logo di dalam brand */

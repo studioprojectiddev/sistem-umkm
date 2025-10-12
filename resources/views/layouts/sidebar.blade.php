@@ -1,6 +1,10 @@
 <section id="sidebar">
     <a href="#" class="brand"> 
-        <img src="{{ asset('assets/images/icon_imanuel2.png') }}" alt="Logo" class="icon" style="width: 40px; height: 40px; object-fit: cover;"> 
+        <div class="brand">
+            <img src="{{ asset('assets/images/icon_imanuel2.png') }}" 
+                alt="Logo" 
+                style="width: 100px; height: auto;">
+        </div>
     </a>
 
     <ul class="side-menu">

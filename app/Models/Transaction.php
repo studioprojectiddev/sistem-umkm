@@ -21,6 +21,10 @@ class Transaction extends Model
         'total',
         'payment_status',
         'payment_method',
+        'uang_diterima',
+        'customer_name',
+        'due_date',
+        'kembalian',
         'status'
     ];
 

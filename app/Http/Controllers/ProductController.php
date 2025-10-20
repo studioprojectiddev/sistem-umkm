@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Models\Product;
 use App\Models\ProductSalesSummary;
 use App\Models\Category;
@@ -11,6 +12,9 @@ use App\Models\ProductVariationOption;
 use App\Models\VariationAttribute;
 use App\Models\VariationOption; 
 use App\Models\Transaction;
+use App\Models\Warehouse;
+use App\Models\WarehouseProduct;
+use App\Models\WarehouseTransfer;
 use App\Models\TransactionItem;
 use Illuminate\Validation\Rule;
 use Carbon\Carbon;
@@ -136,8 +140,6 @@ class ProductController extends Controller
             'price'          => 'required|numeric',
             'discount_price' => 'nullable|numeric',
             'cost_price'     => 'nullable|numeric',
-            'stock'          => 'required|integer',
-            'min_stock'      => 'nullable|integer',
             'unit'           => 'nullable|string|max:50',
             'product_type'   => 'required|in:goods,service',
             'expiry_date'    => 'nullable|date',
@@ -201,8 +203,6 @@ class ProductController extends Controller
             'price'           => $request->price,
             'discount_price'  => $request->discount_price,
             'cost_price'      => $request->cost_price,
-            'stock'           => $request->stock,
-            'min_stock'       => $request->min_stock ?? 0,
             'unit'            => $request->unit ?? 'pcs',
             'product_type'    => $request->product_type ?? 'goods',
             'expiry_date'     => $request->expiry_date,
@@ -240,8 +240,6 @@ class ProductController extends Controller
             'price'          => 'required|numeric',
             'discount_price' => 'nullable|numeric',
             'cost_price'     => 'nullable|numeric',
-            'stock'          => 'required|integer',
-            'min_stock'      => 'nullable|integer',
             'unit'           => 'nullable|string|max:50',
             'product_type'   => 'required|in:goods,service',
             'expiry_date'    => 'nullable|date',
@@ -299,8 +297,6 @@ class ProductController extends Controller
         $product->price          = $request->price;
         $product->discount_price = $request->discount_price;
         $product->cost_price     = $request->cost_price;
-        $product->stock          = $request->stock;
-        $product->min_stock      = $request->min_stock ?? 0;
         $product->unit           = $request->unit ?? 'pcs';
         $product->product_type   = $request->product_type;
         $product->expiry_date    = $request->expiry_date;
@@ -550,7 +546,6 @@ class ProductController extends Controller
                 'attributes' => 'required|array|min:1',
                 'options'    => 'required|array|min:1',
                 'price'      => 'required|numeric|min:0',
-                'stock'      => 'required|integer|min:0',
                 'sku'        => 'nullable|string|max:100|unique:product_variations,sku',
                 'weight'     => 'required|numeric|min:0',
                 'image'      => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
@@ -572,7 +567,6 @@ class ProductController extends Controller
                 'name'        => 'Variasi ' . ($index + 1),
                 'sku'         => $validated['sku'] ?? strtoupper(uniqid('SKU-')),
                 'price'       => $validated['price'],
-                'stock'       => $validated['stock'],
                 'weight'      => $validated['weight'],
                 'image'       => $imagePath,
                 'is_active'   => isset($variationData['is_active']) ? 1 : 0,
@@ -602,7 +596,6 @@ class ProductController extends Controller
             'attributes'   => 'required|array',
             'options'      => 'required|array',
             'price'        => 'required|numeric|min:0',
-            'stock'        => 'required|integer|min:0',
             'sku'          => [
                 'sometimes',
                 'nullable',
@@ -636,7 +629,6 @@ class ProductController extends Controller
             'product_id' => $validated['product_id'],
             'sku'        => $sku,
             'price'      => $validated['price'],
-            'stock'      => $validated['stock'],
             'weight'     => $validated['weight'],
             'image'      => $imagePath,
             'is_active'  => $request->has('is_active') ? 1 : 0,
@@ -671,49 +663,99 @@ class ProductController extends Controller
 
     public function detailPage(Request $request)
     {
+        // 🔹 Tentukan gudang aktif untuk transaksi (type = store)
+        $storeWarehouse = Warehouse::where('type', 'store')
+            ->where('idpenginput', auth()->id())
+            ->first();
+
+        // Jika belum ada gudang toko
+        if (!$storeWarehouse) {
+            return back()->with('error', 'Gudang toko belum dikonfigurasi untuk akun ini.');
+        }
+
         $query = Product::with([
-            // Hitung jumlah varian & stok tiap varian
-            'variations' => function($q) {
-                $q->select('id','product_id','name','sku','price','stock')
-                ->where('is_active', 1);
+            // 🔹 Relasi variasi produk + stok di gudang toko
+            'variations' => function ($q) use ($storeWarehouse) {
+                $q->select('id', 'product_id', 'name', 'sku', 'price', 'is_active')
+                    ->with(['warehouseStock' => function ($q2) use ($storeWarehouse) {
+                        $q2->where('warehouse_id', $storeWarehouse->id)
+                            ->select(
+                                'id',
+                                'warehouse_id',
+                                'product_id',
+                                'variation_id',
+                                'stock',
+                                'reserved',
+                                'min_stock',
+                                'rack_position',
+                                'is_active'
+                            );
+                    }]);
             },
-            // Ringkasan penjualan dari tabel product_sales_summary
-            'salesSummary' => function($q) {
+
+            // 🔹 Stok dari warehouse (produk utama)
+            'warehouseStocks' => function ($q) use ($storeWarehouse) {
+                $q->where('warehouse_id', $storeWarehouse->id)
+                    ->select(
+                        'id',
+                        'warehouse_id',
+                        'product_id',
+                        'variation_id',
+                        'stock',
+                        'reserved',
+                        'min_stock',
+                        'rack_position',
+                        'is_active'
+                    );
+            },
+
+            // 🔹 Ringkasan penjualan
+            'salesSummary' => function ($q) {
                 $q->select(
                     'product_id',
                     DB::raw('COALESCE(SUM(total_qty),0) as total_qty'),
                     DB::raw('COALESCE(SUM(total_sales),0) as total_sales')
-                )
-                ->groupBy('product_id');
-            }
+                )->groupBy('product_id');
+            },
+
+            // 🔹 Relasi kategori (opsional)
+            'category:id,name',
         ])
-        ->select('id','name','sku','price','stock','thumbnail','is_active')
-        ->when($request->q, function($q) use ($request) {
-            $q->where('name','like','%'.$request->q.'%')
-            ->orWhere('sku','like','%'.$request->q.'%');
+        ->select('id', 'name', 'sku', 'price', 'thumbnail', 'is_active', 'category_id')
+        ->when($request->q, function ($q) use ($request) {
+            $q->where('name', 'like', '%' . $request->q . '%')
+            ->orWhere('sku', 'like', '%' . $request->q . '%');
         })
         ->orderBy('name');
 
         $products = $query->paginate(20);
 
-        $products->transform(function($p) {
-            $p->variant_count = $p->variations->count();
-        
-            $stokVarian  = $p->variations->sum('stock');
-            $stokInduk   = $p->stock ?? 0;
-        
-            // 🔹 stok_total = stok induk + stok varian
-            $p->stock_total   = $stokInduk + $stokVarian;
-        
-            // 🔹 stok produk (tanpa varian)
+        // 🔹 Transformasi data agar siap tampil di view
+        $products->transform(function ($p) {
+            // Ambil stok produk utama dari warehouse toko
+            $stokInduk = optional($p->warehouseStocks->first())->stock ?? 0;
+
+            // Hitung stok total variasi dari warehouse toko
+            $stokVarian = $p->variations->sum(function ($v) {
+                return optional($v->warehouseStock->first())->stock ?? 0;
+            });
+
+            // 🔸 Total stok gabungan (induk + variasi)
+            $p->stock_total = $stokInduk + $stokVarian;
+
+            // 🔸 Informasi tambahan
             $p->stock_product = $stokInduk;
-        
+            $p->variant_count = $p->variations->count();
             $p->total_qty     = optional($p->salesSummary->first())->total_qty ?? 0;
             $p->total_sales   = optional($p->salesSummary->first())->total_sales ?? 0;
-        
+
+            // Info gudang (lokasi, status, dsb)
+            $p->rack_position = optional($p->warehouseStocks->first())->rack_position;
+            $p->min_stock     = optional($p->warehouseStocks->first())->min_stock ?? 0;
+            $p->is_available  = optional($p->warehouseStocks->first())->is_active ?? true;
+
             return $p;
         });
-                
 
         return view('umkm.products.detailPage', compact('products'));
     }
@@ -1127,6 +1169,397 @@ class ProductController extends Controller
             'lowSelling' => $lowSelling,
             'salesTrend' => $salesTrend,
         ]);
+    }
+
+    public function warehouse()
+    {
+        // === 1️⃣ Ambil semua gudang (hanya type = warehouse) ===
+        $warehousesQuery = DB::table('warehouses')
+            ->select('id', 'name', 'city', 'address', 'phone', 'pic_name', 'code', 'pic_contact');
+    
+        if (Schema::hasColumn('warehouses', 'type')) {
+            $warehousesQuery->where('type', 'warehouse'); // hanya ambil gudang
+        }
+    
+        $warehouses = DB::table('warehouses')->get();
+    
+        // === 3️⃣ Produk tanpa variasi (stok per warehouse) ===
+        $nonVariationProducts = DB::table('products')
+            ->leftJoin('warehouse_products', function ($join) {
+                $join->on('warehouse_products.product_id', '=', 'products.id')
+                    ->whereNull('warehouse_products.variation_id');
+            })
+            ->leftJoin('warehouses', 'warehouses.id', '=', 'warehouse_products.warehouse_id')
+            ->select(
+                'products.id as id',
+                'products.id as product_id',
+                'products.name as product_name',
+                'products.name as name',
+                'products.sku',
+                'products.price',
+                'warehouses.id as warehouse_id',
+                'warehouses.name as warehouse_name',
+                'warehouses.type as warehouse_type',
+                DB::raw('COALESCE(warehouse_products.stock, 0) as stock'),
+                DB::raw('COALESCE(warehouse_products.min_stock, 0) as min_stock'),
+                'warehouse_products.rack_position'
+            )
+            ->where('warehouses.type', 'warehouse') // hanya tampilkan warehouse
+            ->orWhereNull('warehouses.type') // tetap tampil jika belum punya gudang
+            ->orderBy('products.name')
+            ->get();
+    
+        // === 4️⃣ Produk dengan variasi (stok per warehouse) ===
+        $variationProducts = DB::table('product_variations')
+            ->join('products', 'products.id', '=', 'product_variations.product_id')
+            ->leftJoin('warehouse_products', function ($join) {
+                $join->on('warehouse_products.variation_id', '=', 'product_variations.id');
+            })
+            ->leftJoin('warehouses', 'warehouses.id', '=', 'warehouse_products.warehouse_id')
+            ->select(
+                'product_variations.id as variation_id',
+                'products.id as product_id',
+                DB::raw("CONCAT(products.name, ' - ', product_variations.name) as product_name"),
+                'product_variations.name as variation_name',
+                'product_variations.sku',
+                'product_variations.price',
+                'warehouses.id as warehouse_id',
+                'warehouses.name as warehouse_name',
+                'warehouses.type as warehouse_type',
+                DB::raw('COALESCE(warehouse_products.stock, 0) as stock'),
+                DB::raw('COALESCE(warehouse_products.min_stock, 0) as min_stock'),
+                'warehouse_products.rack_position'
+            )
+            ->where('warehouses.type', 'warehouse') // hanya warehouse
+            ->orWhereNull('warehouses.type')
+            ->orderBy('products.name')
+            ->get();
+    
+        // === 5️⃣ Gabungkan untuk dropdown produk ===
+        $products = collect();
+        foreach ($nonVariationProducts as $p) {
+            $products->push((object)[
+                'id' => $p->product_id,
+                'name' => $p->product_name,
+                'variation_id' => null,
+                'type' => 'non-variation'
+            ]);
+        }
+        foreach ($variationProducts as $v) {
+            $products->push((object)[
+                'id' => $v->product_id,
+                'name' => $v->product_name,
+                'variation_id' => $v->variation_id,
+                'type' => 'variation'
+            ]);
+        }
+    
+        // === 6️⃣ Hitung stok aktual (hanya warehouse) ===
+        foreach ($nonVariationProducts as $p) {
+            if ($p->warehouse_type === 'warehouse' && $p->warehouse_id) {
+                $outgoing = DB::table('warehouse_transfers')
+                    ->where('from_warehouse_id', $p->warehouse_id)
+                    ->where('product_id', $p->product_id)
+                    ->whereNull('variation_id')
+                    ->whereIn('status', ['pending', 'in_transit'])
+                    ->sum('quantity');
+    
+                $p->adjusted_stock = max(0, (int)$p->stock - (int)$outgoing);
+            } else {
+                $p->adjusted_stock = (int)$p->stock;
+            }
+        }
+    
+        foreach ($variationProducts as $v) {
+            if ($v->warehouse_type === 'warehouse' && $v->warehouse_id) {
+                $outgoing = DB::table('warehouse_transfers')
+                    ->where('from_warehouse_id', $v->warehouse_id)
+                    ->where('variation_id', $v->variation_id)
+                    ->whereIn('status', ['pending', 'in_transit'])
+                    ->sum('quantity');
+    
+                $v->adjusted_stock = max(0, (int)$v->stock - (int)$outgoing);
+            } else {
+                $v->adjusted_stock = (int)$v->stock;
+            }
+        }
+    
+        // === 7️⃣ Data transfer antar gudang ===
+        $transfers = DB::table('warehouse_transfers')
+            ->leftJoin('warehouses as w_from', 'w_from.id', '=', 'warehouse_transfers.from_warehouse_id')
+            ->leftJoin('warehouses as w_to', 'w_to.id', '=', 'warehouse_transfers.to_warehouse_id')
+            ->leftJoin('products', 'products.id', '=', 'warehouse_transfers.product_id')
+            ->leftJoin('product_variations', 'product_variations.id', '=', 'warehouse_transfers.variation_id')
+            ->select(
+                'warehouse_transfers.id',
+                'warehouse_transfers.quantity',
+                'warehouse_transfers.status',
+                'warehouse_transfers.created_at',
+                'w_from.name as from_warehouse_name',
+                'w_to.name as to_warehouse_name',
+                DB::raw('COALESCE(products.name, "Produk Tidak Ditemukan") as product_name'),
+                DB::raw('COALESCE(product_variations.name, "-") as variation_name')
+            )
+            ->orderByDesc('warehouse_transfers.created_at')
+            ->get();
+    
+        foreach ($transfers as $t) {
+            if (isset($t->created_at) && is_string($t->created_at)) {
+                $t->created_at = Carbon::parse($t->created_at);
+            }
+        }
+    
+        // === 8️⃣ Return ke view ===
+        return view('umkm.products.warehouse', compact(
+            'warehouses',
+            'products',
+            'nonVariationProducts',
+            'variationProducts',
+            'transfers'
+        ));
+    }
+
+    public function getProductVariations($id)
+    {
+        $variations = DB::table('product_variations')
+            ->where('product_id', $id)
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'variations' => $variations
+        ]);
+    }
+
+    public function warehouseStore(Request $request)
+    {
+        try {
+            $data = $request->validate([
+                'name'        => 'required|string|max:255',
+                'type'        => 'required',
+                'code'        => 'required|string|max:100|unique:warehouses,code',
+                'city'        => 'nullable|string|max:100',
+                'address'     => 'nullable|string',
+                'pic_name'    => 'nullable|string|max:255',
+                'pic_contact' => 'nullable|string|max:255',
+                'phone'       => 'nullable|string|max:50',
+            ]);
+
+            $data['idpenginput'] = auth()->id();
+
+            $warehouse = Warehouse::create($data);
+
+            // 🔥 WAJIB: Selalu balas JSON agar fetch() tidak error
+            return response()->json([
+                'success' => true,
+                'message' => 'Data gudang berhasil disimpan!',
+                'data'    => $warehouse,
+            ]);
+        } catch (\Throwable $th) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menyimpan data: ' . $th->getMessage(),
+            ]);
+        }
+    }
+
+    public function updateWarehouse(Request $request, $id)
+    {
+        $warehouse = Warehouse::find($id);
+        if (!$warehouse) {
+            return response()->json(['success' => false, 'message' => 'Gudang tidak ditemukan.']);
+        }
+
+        $request->validate([
+            'name' => 'required|string|max:100',
+            'code' => 'required|string|max:50|unique:warehouses,code,' . $id,
+        ]);
+
+        $warehouse->update([
+            'name' => $request->name,
+            'code' => $request->code,
+            'address' => $request->address,
+            'city' => $request->city,
+            'phone' => $request->phone,
+            'pic_name' => $request->pic_name,
+            'pic_contact' => $request->pic_contact,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Gudang berhasil diperbarui.'
+        ]);
+    }
+
+    /**
+     * 🗑️ Hapus gudang
+     */
+    public function destroyWarehouse($id)
+    {
+        $warehouse = Warehouse::find($id);
+        if (!$warehouse) {
+            return response()->json(['success' => false, 'message' => 'Data tidak ditemukan.']);
+        }
+
+        $warehouse->delete();
+
+        return response()->json(['success' => true, 'message' => 'Gudang berhasil dihapus.']);
+    }
+
+    public function updateStock(Request $request)
+    {
+        try {
+            // Jika body JSON (misal dari fetch API)
+            if ($request->isJson()) {
+                $data = $request->json()->all();
+                $request->merge($data);
+            }
+
+            // Validasi data dasar
+            $validated = $request->validate([
+                'warehouse_id'  => 'required|exists:warehouses,id',
+                'product_id'    => 'required|integer',
+                'variation_id'  => 'nullable|integer',
+                'action_type'   => 'required|in:add,reduce',
+                'quantity'      => 'required|integer|min:1',
+                'min_stock'     => 'nullable|integer|min:0',
+                'rack_position' => 'nullable|string|max:100',
+            ]);
+
+            $productId = $request->product_id;
+            $variationId = $request->variation_id ?: null;
+
+            // 🔍 Cek produk valid
+            $product = \App\Models\Product::find($productId);
+            if (!$product) {
+                return response()->json(['success' => false, 'message' => 'Produk tidak ditemukan.']);
+            }
+
+            // 🔍 Jika ada variation_id, pastikan variasinya valid
+            if ($variationId) {
+                $variation = \App\Models\ProductVariation::find($variationId);
+                if (!$variation) {
+                    return response()->json(['success' => false, 'message' => 'Variasi produk tidak ditemukan.']);
+                }
+            }
+
+            // 🔍 Cek stok existing di tabel warehouse_products
+            $record = \App\Models\WarehouseProduct::where('warehouse_id', $request->warehouse_id)
+                ->where('product_id', $productId)
+                ->where(function ($q) use ($variationId) {
+                    if ($variationId) $q->where('variation_id', $variationId);
+                    else $q->whereNull('variation_id');
+                })
+                ->first();
+
+            // 🆕 Jika belum ada data stok → buat baru
+            if (!$record) {
+                if ($request->action_type === 'reduce') {
+                    return response()->json(['success' => false, 'message' => 'Tidak dapat mengurangi stok yang belum ada.']);
+                }
+
+                \App\Models\WarehouseProduct::create([
+                    'warehouse_id'  => $request->warehouse_id,
+                    'product_id'    => $productId,
+                    'variation_id'  => $variationId,
+                    'stock'         => $request->quantity,
+                    'min_stock'     => $request->min_stock ?? 0,
+                    'rack_position' => $request->rack_position,
+                    'is_active'     => true,
+                ]);
+
+                return response()->json(['success' => true, 'message' => 'Stok baru berhasil ditambahkan ke gudang.']);
+            }
+
+            // 🔁 Update stok existing
+            $newStock = $record->stock;
+            if ($request->action_type === 'add') {
+                $newStock += $request->quantity;
+            } elseif ($request->action_type === 'reduce') {
+                $newStock = max(0, $newStock - $request->quantity);
+            }
+
+            $record->update([
+                'stock'         => $newStock,
+                'min_stock'     => $request->min_stock ?? $record->min_stock,
+                'rack_position' => $request->rack_position ?? $record->rack_position,
+            ]);
+
+            return response()->json(['success' => true, 'message' => 'Stok berhasil diperbarui.']);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['success' => false, 'message' => 'Validasi gagal: ' . $e->getMessage()]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Terjadi kesalahan: ' . $e->getMessage()]);
+        }
+    }
+
+    public function storeTransfer(Request $request)
+    {
+        $validated = $request->validate([
+            'from_warehouse_id' => 'required|integer',
+            'to_warehouse_id'   => 'required|integer|different:from_warehouse_id',
+            'product_id'        => 'required|integer',
+            'quantity'          => 'required|integer|min:1',
+            'variation_id'      => 'nullable|integer',
+        ]);
+    
+        DB::beginTransaction();
+        try {
+            $transfer = WarehouseTransfer::create([
+                'from_warehouse_id' => $validated['from_warehouse_id'],
+                'to_warehouse_id'   => $validated['to_warehouse_id'],
+                'product_id'        => $validated['product_id'],
+                'variation_id'      => $validated['variation_id'] ?? null, // penting!
+                'quantity'          => $validated['quantity'],
+                'status'            => 'received',
+            ]);
+    
+            // Kurangi stok dari gudang asal
+            if ($validated['variation_id']) {
+                // kalau ada variasi
+                DB::table('warehouse_products')
+                    ->where('warehouse_id', $validated['from_warehouse_id'])
+                    ->where('variation_id', $validated['variation_id'])
+                    ->decrement('stock', $validated['quantity']);
+            } else {
+                // kalau tidak ada variasi
+                DB::table('warehouse_products')
+                    ->where('warehouse_id', $validated['from_warehouse_id'])
+                    ->whereNull('variation_id')
+                    ->where('product_id', $validated['product_id'])
+                    ->decrement('stock', $validated['quantity']);
+            }
+    
+            // Tambahkan stok ke gudang tujuan
+            DB::table('warehouse_products')->updateOrInsert(
+                [
+                    'warehouse_id' => $validated['to_warehouse_id'],
+                    'product_id' => $validated['product_id'],
+                    'variation_id' => $validated['variation_id'] ?? null,
+                ],
+                [
+                    'stock' => DB::raw('stock + ' . $validated['quantity'])
+                ]
+            );
+    
+            DB::commit();
+    
+            return response()->json([
+                'success' => true,
+                'message' => 'Transfer stok berhasil disimpan',
+                'data' => $transfer
+            ]);
+    
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ]);
+        }
     }
 
 }

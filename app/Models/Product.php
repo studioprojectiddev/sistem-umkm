@@ -27,8 +27,6 @@ class Product extends Model
         'price',
         'discount_price',
         'cost_price',
-        'stock',
-        'min_stock',
         'unit',
     
         // Jenis produk
@@ -119,6 +117,11 @@ class Product extends Model
     public function salesSummary()
     {
         return $this->hasMany(ProductSalesSummary::class, 'product_id');
+    }
+
+    public function warehouseStocks()
+    {
+        return $this->hasMany(WarehouseProduct::class, 'product_id');
     }
 
 }

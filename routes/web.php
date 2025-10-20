@@ -41,6 +41,13 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::put('/managementstock/{id}', [ProductController::class, 'managementupdate'])->name('umkm.product.management_update');
     Route::get('/insight', [ProductController::class, 'insight'])->name('umkm.product.insight');
     Route::get('/analytic', [ProductController::class, 'analytic'])->name('umkm.product.analytic');
+    Route::get('/warehouse', [ProductController::class, 'warehouse'])->name('umkm.product.warehouse');
+    Route::post('/warehouse', [ProductController::class, 'warehouseStore'])->name('umkm.warehouse.store');
+    Route::post('/warehouse/update-stock', [ProductController::class, 'updateStock'])->name('umkm.warehouse.update-stock');
+    Route::post('/umkm/warehouse/update/{id}', [ProductController::class, 'updateWarehouse'])->name('umkm.warehouse.update-warehouse');
+    Route::delete('/warehouse/delete/{id}', [ProductController::class, 'destroyWarehouse'])->name('umkm.warehouse.delete');
+    Route::get('/umkm/product/{id}/variations', [ProductController::class, 'getProductVariations']);
+    Route::post('/umkm/warehouse-transfer', [ProductController::class, 'storeTransfer'])->name('umkm.warehouse.transfer');
 
     // Kategori UMKM (semua via ProductController)
     Route::get('/umkm/category', [ProductController::class, 'category'])->name('umkm.category');

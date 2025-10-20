@@ -36,7 +36,6 @@ return new class extends Migration
             $table->string('name'); // contoh: Kaos Merah - M
             $table->string('sku')->nullable()->unique();
             $table->decimal('price', 15, 2)->nullable();
-            $table->integer('stock')->default(0);
             $table->decimal('weight', 8, 2)->nullable();
             $table->string('image')->nullable(); // gambar khusus variasi
             $table->boolean('is_active')->default(true);

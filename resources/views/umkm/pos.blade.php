@@ -668,9 +668,9 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
             <button class="tab-link" data-target="hargadiskon">Harga & Variasi Diskon</button>
             <button class="tab-link" data-target="stokreal">Stok Real-time & Unit</button>
             <button class="tab-link" data-target="aksikasir">Aksi Kasir</button>
-            <button class="tab-link" data-target="integrasitransaksi">Integrasi Transaksi & Update Stok</button>
+            <!-- <button class="tab-link" data-target="integrasitransaksi">Integrasi Transaksi & Update Stok</button> -->
             <button class="tab-link" data-target="laporanproduk">Laporan & Analitik Produk</button>
-            <button class="tab-link" data-target="supportfitur">Support Fitur Tambahan</button>
+            <!-- <button class="tab-link" data-target="supportfitur">Support Fitur Tambahan</button> -->
         </div>
 
         {{-- Tab: Identitas Produk --}}
@@ -689,7 +689,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
                             <th>Kategori</th>
                             <th>SKU / Barcode</th>
                             <th>Harga</th>
-                            <th>Stok / Unit</th>
+                            <th>Stok</th>
                             <th>Aksi Kasir</th>
                         </tr>
                     </thead>
@@ -732,8 +732,21 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
                         </td>
                         <td>{{ $product->category->name ?? '-' }}</td>
                         <td>{{ $product->sku ?? $product->barcode ?? '-' }}</td>
-                        <td>Rp {{ number_format($product->price, 0, ',', '.') }}</td>
-                        <td>{{ $product->stock }} {{ $product->unit ?? 'pcs' }}</td>
+                        <td>
+                            @if($product->is_promo && $product->promo_start <= now() && $product->promo_end >= now())
+                                <span class="text-success fw-bold">
+                                    Rp {{ number_format($product->final_price, 0, ',', '.') }}
+                                </span><br>
+                                <small class="text-muted">
+                                    <del>Rp {{ number_format($product->price, 0, ',', '.') }}</del>
+                                    <br>Promo: {{ \Carbon\Carbon::parse($product->promo_start)->format('d M') }} -
+                                    {{ \Carbon\Carbon::parse($product->promo_end)->format('d M Y') }}
+                                </small>
+                            @else
+                                Rp {{ number_format($product->final_price, 0, ',', '.') }}
+                            @endif
+                        </td>
+                        <td>{{ $product->stock }}</td>
                         <td>
                             <button class="btn btn-sm btn-success btn-add-cart"
                                 data-id="{{ $product->id }}"
@@ -1203,6 +1216,7 @@ $(document).on('click', '.btn-add-cart', function(e){
     let productPrice = $btn.data('price') || 0;
 
     if (hasVariation) {
+        // 🔹 Popup untuk produk dengan variasi
         let html = `
             <div style="width:100%; max-width:450px; margin:0 auto;">
                 <select id="swal_select" class="swal2-select"
@@ -1219,15 +1233,10 @@ $(document).on('click', '.btn-add-cart', function(e){
                     </option>`;
 
         variations.forEach((v) => {
-            // ambil nama opsi variasi → langsung value saja
             let optionLabels = (v.options || [])
-                .map(opt => opt.value) // hanya value (misal: "eceran", "144")
+                .map(opt => opt.value)
                 .join(' / ');
-
-            // tambahkan weight jika ada
             let weightText = v.weight ? ` [ ${parseFloat(v.weight).toLocaleString()} gr ]` : '';
-
-            // bentuk label akhir → hanya value variasi
             let label = optionLabels || v.name || '';
 
             html += `
@@ -1238,38 +1247,54 @@ $(document).on('click', '.btn-add-cart', function(e){
                 </option>`;
         });
 
-        html += `</select></div>`;
+        html += `
+            </select>
+            <div style="display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; margin-top: 10px;">
+                <div style="width:100%; max-width: 450px; marginL0 auto;">
+                    <input id="swal_qty" type="number" min="1" value="1"
+                        class="swal2-input"
+                        style="width: 100%; padding:10px; border-radius:8px; font-size:14px;">
+                </div>
+            </div>
+        `;
 
         Swal.fire({
             title: 'Pilih produk / varian',
             html: html,
             width: '40%',
-            customClass: {
-                popup: 'swal2-responsive-popup'
-            },
+            customClass: { popup: 'swal2-responsive-popup' },
             showCancelButton: true,
             confirmButtonText: 'Tambah ke Keranjang',
             preConfirm: () => {
-                return $('#swal_select').val();
+                const val = $('#swal_select').val();
+                const qty = parseInt($('#swal_qty').val());
+
+                if (!val) return Swal.showValidationMessage('Pilih produk terlebih dahulu!');
+                if (!qty || qty <= 0) return Swal.showValidationMessage('Masukkan jumlah yang valid!');
+                
+                return { val, qty };
             }
         }).then(result => {
             if (result.isConfirmed && result.value) {
-                const val = result.value;
+                const { val, qty } = result.value;
+
                 if (val.startsWith('product_')) {
                     const id = val.split('_')[1];
-                    $.post(`/umkm/pos/add/${id}`, { _token: "{{ csrf_token() }}" }, function (res) {
+                    $.post(`/umkm/pos/add/${id}`, { 
+                        _token: "{{ csrf_token() }}", 
+                        qty: qty 
+                    }, function (res) {
                         if (res.status === 'success') refreshCart(res.cart);
                         else Swal.fire('Error', res.message || 'Gagal menambah', 'error');
                     });
                 } else {
                     const vid = val.split('_')[1];
-
-                    // 🔹 Ambil label langsung dari option terpilih
                     let selectedText = $('#swal_select option:selected').text();
 
                     $.post(`/umkm/pos/add-variation/${vid}`, { 
                         _token: "{{ csrf_token() }}",
-                        variation_label: selectedText   // kirim label lengkap
+                        qty: qty,
+                        variation_label: selectedText
                     }, function (res) {
                         if (res.status === 'success') refreshCart(res.cart);
                         else Swal.fire('Error', res.message || 'Gagal menambah', 'error');
@@ -1277,15 +1302,49 @@ $(document).on('click', '.btn-add-cart', function(e){
                 }
             }
         });
+
     } else {
-        // produk tanpa variasi
-        $.post(`/umkm/pos/add/${productId}`, {_token: "{{ csrf_token() }}"}, function(res){
-            if(res.status === 'success') refreshCart(res.cart);
-            else Swal.fire('Error', res.message || 'Gagal menambah', 'error');
+        // 🔹 Produk tanpa variasi
+        Swal.fire({
+            title: 'Masukkan Jumlah Produk',
+            html: `
+                <div style="text-align:left;">
+                    <label for="swal_qty" style="font-size:14px;">Jumlah (Qty)</label>
+                    <input id="swal_qty" type="number" min="1" value="1"
+                        style="
+                            width:100%;
+                            padding:10px;
+                            border-radius:8px;
+                            border:1px solid #ccc;
+                            margin-top:5px;
+                            font-size:14px;
+                        ">
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Tambah ke Keranjang',
+            preConfirm: () => {
+                const qty = parseInt($('#swal_qty').val()) || 1;
+                if (qty < 1) {
+                    Swal.showValidationMessage('Jumlah minimal 1!');
+                    return false;
+                }
+                return qty;
+            }
+        }).then(result => {
+            if (result.isConfirmed) {
+                const qty = result.value;
+                $.post(`/umkm/pos/add/${productId}`, { 
+                    _token: "{{ csrf_token() }}",
+                    quantity: qty
+                }, function(res){
+                    if(res.status === 'success') refreshCart(res.cart);
+                    else Swal.fire('Error', res.message || 'Gagal menambah', 'error');
+                });
+            }
         });
     }
 });
-
 
 // Update qty
 $(document).on("change", ".qty", function(){
@@ -1320,34 +1379,131 @@ $("#clearCart").click(function(){
 
 // Checkout
 $("#checkout").click(function(){
-    $.post(`/umkm/pos/checkout`, {_token:"{{ csrf_token() }}"}, function(res){
-        if(res.status === "success"){ 
-            Swal.fire({
-                icon: 'success',
-                title: 'Berhasil!',
-                text: res.message,
-                timer: 1500,
-                showConfirmButton: false
-            }).then(() => {
-                // Refresh cart
-                refreshCart([]);
-                
-                // Buka struk di tab baru
-                window.open(`/umkm/pos/receipt/${res.transaction_id}`, '_blank');
+    const totalHarga = $("#cartTable tbody tr").toArray().reduce((sum, tr) => {
+        const subtotalText = $(tr).find("td:eq(2)").text().replace(/[^\d]/g, "");
+        return sum + parseInt(subtotalText || 0);
+    }, 0);
 
-                // Refresh halaman atau data produk
-                location.reload();
+    if (totalHarga <= 0) {
+        Swal.fire('Keranjang Kosong', 'Tambahkan produk terlebih dahulu sebelum checkout!', 'warning');
+        return;
+    }
+
+    Swal.fire({
+        title: 'Pembayaran',
+        html: `
+            <div style="text-align:left;">
+                <p><strong>Total Belanja:</strong> Rp ${totalHarga.toLocaleString()}</p>
+                
+                <label for="uangDiterima">Pembayaran:</label>
+                <input id="uangDiterima" type="number" min="0" class="swal2-input" placeholder="Masukkan jumlah uang">
+                
+                <div id="utangSection" style="display:none;margin-top:15px;">
+                    <hr>
+                    <label for="customerName">Nama Pembeli (utang):</label>
+                    <input id="customerName" type="text" class="swal2-input" placeholder="Nama pelanggan">
+                    
+                    <label for="dueDate">Tanggal Pembayaran:</label>
+                    <input id="dueDate" type="date" class="swal2-input">
+                </div>
+
+                <p id="kembalianText" style="margin-top:10px;font-weight:bold;font-size:15px;color:green;">
+                    Kembalian: Rp 0
+                </p>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Proses Pembayaran',
+        didOpen: () => {
+            const uangInput = document.getElementById('uangDiterima');
+            const kembalianText = document.getElementById('kembalianText');
+            const utangSection = document.getElementById('utangSection');
+
+            uangInput.addEventListener('input', function() {
+                const uang = parseInt(this.value || 0);
+                const kembali = uang - totalHarga;
+
+                if (kembali < 0) {
+                    kembalianText.style.color = 'red';
+                    kembalianText.textContent = `Uang kurang Rp ${Math.abs(kembali).toLocaleString()}`;
+                    utangSection.style.display = 'block';
+                } else {
+                    kembalianText.style.color = 'green';
+                    kembalianText.textContent = `Kembalian: Rp ${kembali.toLocaleString()}`;
+                    utangSection.style.display = 'none';
+                }
             });
-        } else {
-            Swal.fire({
-                icon: 'error',
-                title: 'Oops...',
-                text: res.message
+        },
+        preConfirm: () => {
+            const uang = parseInt(document.getElementById('uangDiterima').value || 0);
+            const kembali = uang - totalHarga;
+
+            if (uang < totalHarga) {
+                const nama = document.getElementById('customerName').value.trim();
+                const jatuhTempo = document.getElementById('dueDate').value;
+
+                if (!nama) {
+                    Swal.showValidationMessage('Nama pelanggan wajib diisi jika uang kurang!');
+                    return false;
+                }
+
+                if (!jatuhTempo) {
+                    Swal.showValidationMessage('Tanggal jatuh tempo wajib diisi!');
+                    return false;
+                }
+
+                return { uang, customer_name: nama, due_date: jatuhTempo };
+            }
+
+            return { uang, customer_name: null, due_date: null };
+        }
+    }).then(result => {
+        if (result.isConfirmed) {
+            const data = result.value;
+            const uangDiterima = data.uang;
+            const kembalian = uangDiterima - totalHarga;
+
+            // Kirim data checkout
+            $.post(`/umkm/pos/checkout`, {
+                _token: "{{ csrf_token() }}",
+                total: totalHarga,
+                uang_diterima: uangDiterima,
+                kembalian: kembalian,
+                customer_name: data.customer_name,
+                due_date: data.due_date
+            }, function(res){
+                if (res.status === "success") {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Transaksi Berhasil!',
+                        html: `
+                            <p><strong>Total:</strong> Rp ${totalHarga.toLocaleString()}</p>
+                            <p><strong>Pembayaran:</strong> Rp ${uangDiterima.toLocaleString()}</p>
+                            ${res.payment_status === 'partial' ? `
+                                <p style="color:red;"><strong>UTANG:</strong> Rp ${(totalHarga - uangDiterima).toLocaleString()}</p>
+                                <p><strong>Nama:</strong> ${data.customer_name}</p>
+                                <p><strong>Jatuh Tempo:</strong> ${data.due_date}</p>
+                            ` : `
+                                <p><strong>Kembalian:</strong> Rp ${kembalian.toLocaleString()}</p>
+                            `}
+                        `,
+                        showCancelButton: true,
+                        confirmButtonText: 'Cetak Struk',
+                        cancelButtonText: 'Tutup'
+                    }).then(printRes => {
+                        if (printRes.isConfirmed) {
+                            window.open(`/umkm/pos/receipt/${res.transaction_id}`, '_blank');
+                        }
+                        refreshCart([]);
+                        location.reload();
+                    });
+                } else {
+                    Swal.fire('Error', res.message || 'Checkout gagal', 'error');
+                }
             });
         }
     });
 });
-
 
 // Promo toggle
 $("#is_promo").change(function(){
@@ -1787,55 +1943,105 @@ document.addEventListener('DOMContentLoaded', function(){
     let currentPage = 1;
 
     function renderTable(page = 1) {
-        const tbody = $("#productsTableBody");
-        tbody.empty();
+        function renderTable(page = 1) {
+    const tbody = $("#productsTableBody");
+    tbody.empty();
 
-        const start = (page - 1) * perPage;
-        const end = start + perPage;
-        const pageProducts = filteredProducts.slice(start, end);
+    const start = (page - 1) * perPage;
+    const end = start + perPage;
+    const pageProducts = filteredProducts.slice(start, end);
 
-        pageProducts.forEach((product, index) => {
-            let variationHtml = '';
-            if(product.variations.length > 0) {
-                variationHtml = '<ul class="mb-0 ps-3">';
-                product.variations.forEach((v, vi) => {
-                    variationHtml += `<li>${vi+1}. (Stok: ${v.stock}, Rp ${v.price.toLocaleString()}, ${v.weight} gr)`;
-                    if(v.options.length > 0){
-                        variationHtml += '<br><small class="text-muted">[';
-                        variationHtml += v.options.map(o => `${o.attribute}: ${o.value}`).join(', ');
-                        variationHtml += ']</small>';
-                    }
-                    variationHtml += '</li>';
-                });
-                variationHtml += '</ul>';
-            }
+    pageProducts.forEach((product, index) => {
+        // 🧩 Render variasi produk
+        let variationHtml = '';
+        if (product.variations && product.variations.length > 0) {
+            variationHtml = '<ul class="mb-0 ps-3">';
+            product.variations.forEach((v, vi) => {
+                variationHtml += `
+                    <li>
+                        ${vi + 1}. (Stok: ${v.stock ?? 0}, Rp ${Number(v.price).toLocaleString()}, ${v.weight ?? 0} gr)
+                        ${v.options && v.options.length > 0 ? `
+                            <br>
+                            <small class="text-muted">
+                                [${v.options.map(o => `${o.attribute}: ${o.value}`).join(', ')}]
+                            </small>
+                        ` : ''}
+                    </li>
+                `;
+            });
+            variationHtml += '</ul>';
+        }
 
-            tbody.append(`
-                <tr>
-                    <td>${start + index + 1}</td>
-                    <td>${product.thumbnail ? `<img src="/${product.thumbnail}" width="50">` : '-'}</td>
-                    <td>${product.name}${variationHtml}</td>
-                    <td>${product.category}</td>
-                    <td>${product.sku}</td>
-                    <td>Rp ${product.price.toLocaleString()}</td>
-                    <td>${product.stock} ${product.unit}</td>
-                    <td>
-                        <button class="btn btn-sm btn-success btn-add-cart"
-                            data-id="${product.id}"
-                            data-price="${product.price}"
-                            data-final-price="${product.final_price}" 
-                            data-has-variation="${product.variations.length > 0 ? 1 : 0}"
-                            data-variations='${JSON.stringify(product.variations)}'>
-                            + Keranjang
-                        </button>
-                    </td>
-                </tr>
-            `);
-        });
+        // 🏷️ Logika harga dan promo
+        let priceHtml = '';
+        const now = new Date();
+        const promoStart = product.promo_start ? new Date(product.promo_start) : null;
+        const promoEnd = product.promo_end ? new Date(product.promo_end) : null;
+        const isPromoActive = product.is_promo && promoStart && promoEnd && now >= promoStart && now <= promoEnd;
 
-        renderPagination(Math.ceil(filteredProducts.length / perPage));
-        renderTableInfo(start, pageProducts.length, filteredProducts.length);
-    }
+        if (isPromoActive) {
+            priceHtml = `
+                <span class="text-success fw-bold">
+                    Rp ${Number(product.final_price ?? product.promo_price).toLocaleString()}
+                </span><br>
+                <small class="text-muted">
+                    <del>Rp ${Number(product.price).toLocaleString()}</del><br>
+                    Promo: ${formatDate(product.promo_start)} - ${formatDate(product.promo_end)}
+                </small>
+            `;
+        } else {
+            priceHtml = `Rp ${Number(product.final_price ?? product.price).toLocaleString()}`;
+        }
+
+        // 🧾 Render kategori
+        const categoryName = product.category && product.category.name ? product.category.name : '-';
+
+        // 🧰 Append baris produk ke tabel
+        tbody.append(`
+            <tr>
+                <td>${start + index + 1}</td>
+                <td>
+                    ${product.thumbnail ? `<img src="/${product.thumbnail}" alt="${product.name}" width="50">` : '-'}
+                </td>
+                <td>
+                    ${product.name}
+                    ${variationHtml}
+                </td>
+                <td>${categoryName}</td>
+                <td>${product.sku ?? '-'}</td>
+                <td>${priceHtml}</td>
+                <td>${product.stock ?? 0}</td>
+                <td>
+                    <button class="btn btn-sm btn-success btn-add-cart"
+                        data-id="${product.id}"
+                        data-price="${product.price}"
+                        data-final-price="${product.final_price ?? product.price}"
+                        data-has-variation="${product.variations && product.variations.length > 0 ? 1 : 0}"
+                        data-variations='${JSON.stringify(product.variations)}'>
+                        + Keranjang
+                    </button>
+                </td>
+            </tr>
+        `);
+    });
+
+    renderPagination(Math.ceil(filteredProducts.length / perPage));
+    renderTableInfo(start, pageProducts.length, filteredProducts.length);
+}
+
+// 🔹 Fungsi bantu untuk format tanggal promo
+function formatDate(dateString) {
+    if (!dateString) return '';
+    const d = new Date(dateString);
+    return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// 🔹 Fungsi bantu format tanggal ke format Indonesia (misal: 20 Okt 2025)
+function formatDate(dateStr) {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 
     function renderPagination(totalPages) {
         const container = $("#tablePaginationProduct");

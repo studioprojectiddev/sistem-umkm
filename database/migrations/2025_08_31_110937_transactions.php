@@ -46,6 +46,10 @@ return new class extends Migration
         
             // Catatan tambahan
             $table->text('notes')->nullable();
+            $table->string('customer_name')->nullable()->after('customer_id'); // nama pembeli / pelanggan
+            $table->date('due_date')->nullable()->after('payment_status');
+            $table->decimal('uang_diterima', 15, 2)->nullable()->after('total');
+            $table->decimal('kembalian', 15, 2)->nullable()->after('uang_diterima');
         
             // Audit
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();

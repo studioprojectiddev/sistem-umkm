@@ -72,16 +72,8 @@
 </head>
 <body onload="window.print(); autoClose()">
 
-    <!-- Logo -->
-    @if(isset($storeLogo))
-        <img src="{{ asset($storeLogo) }}" class="logo" alt="Logo Toko">
-    @endif
-
-    <!-- Toko -->
-    <h2>{{ $storeName ?? config('app.name') }}</h2>
-    @if(isset($storeAddress))
-        <p style="text-align:center;">{{ $storeAddress }}</p>
-    @endif
+    <h2>Imanuel</h2>
+    <img src="{{ asset('assets/images/icon_imanuel2.png') }}" class="logo" alt="Logo Toko">
     <hr>
 
     <!-- Invoice Info -->

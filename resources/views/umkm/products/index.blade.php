@@ -163,7 +163,6 @@
                             <th>Nama</th>
                             <th>Kategori</th>
                             <th>Harga</th>
-                            <th>Stok</th>
                             <th>Satuan</th>
                             <th>Status</th>
                             <th width="150">Aksi</th>
@@ -183,7 +182,6 @@
                                 <td style="text-align:center;">{{ $product->name }}</td>
                                 <td style="text-align:center;">{{ $product->category->name ?? '-' }}</td>
                                 <td style="text-align:center;">Rp {{ number_format($product->price, 0, ',', '.') }}</td>
-                                <td style="text-align:center;">{{ $product->stock }}</td>
                                 <td style="text-align:center;">{{ $product->unit }}</td>
                                 <td style="text-align:center;">
                                     @if($product->is_active)
@@ -205,8 +203,6 @@
                                                 data-price="{{ $product->price }}"
                                                 data-discount_price="{{ $product->discount_price }}"
                                                 data-cost_price="{{ $product->cost_price }}"
-                                                data-stock="{{ $product->stock }}"
-                                                data-min_stock="{{ $product->min_stock }}"
                                                 data-unit="{{ $product->unit }}"
                                                 data-product_type="{{ $product->product_type }}"
                                                 data-expiry_date="{{ $product->expiry_date }}"
@@ -292,7 +288,6 @@
                             <th>Variasi</th>
                             <th>Berat</th>
                             <th>Harga</th>
-                            <th>Stok</th>
                             <th>Aksi</th>
                         </tr>
                     </thead>
@@ -325,7 +320,6 @@
                                     </td>
                                     <td>{{ (int) $variation->weight }} g</td>
                                     <td>Rp {{ number_format($variation->price, 0, ',', '.') }}</td>
-                                    <td>{{ $variation->stock }}</td>
                                     <td>
                                         <div class="button-container">
                                             <a href="javascript:void(0);" 
@@ -430,18 +424,6 @@
                     <input type="number" step="0.01" name="cost_price" id="cost_price">
                 </div>
                 <div class="form-group"></div>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="stock">Stok</label>
-                    <input type="number" name="stock" id="stock" value="0">
-                </div>
-
-                <div class="form-group">
-                    <label for="min_stock">Minimal Stok</label>
-                    <input type="number" name="min_stock" id="min_stock" value="0">
-                </div>
             </div>
 
             <div class="form-row">
@@ -623,17 +605,6 @@
                     <input type="number" step="0.01" name="cost_price" id="edit_cost_price">
                 </div>
                 <div class="form-group">
-                </div>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="edit_stock">Stok</label>
-                    <input type="number" name="stock" id="edit_stock">
-                </div>
-                <div class="form-group">
-                    <label for="edit_min_stock">Minimal Stok</label>
-                    <input type="number" name="min_stock" id="edit_min_stock">
                 </div>
             </div>
 
@@ -847,10 +818,6 @@
                             <label>Harga</label>
                             <input type="number" name="variations[0][price]" placeholder="Masukkan harga" required>
                         </div>
-                        <div class="form-group">
-                            <label>Stok</label>
-                            <input type="number" name="variations[0][stock]" placeholder="Jumlah stok" required>
-                        </div>
                     </div>
 
                     {{-- Berat & Gambar --}}
@@ -969,11 +936,6 @@
                 <div class="form-group">
                     <label for="variation_price">Harga</label>
                     <input type="number" name="price" id="variation_price" class="form-control" value="{{ $variation->price ?? '' }}" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="variation_stock">Stok</label>
-                    <input type="number" name="stock" id="variation_stock" class="form-control" value="{{ $variation->stock ?? '' }}" required>
                 </div>
             </div>
 
@@ -1109,10 +1071,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 <div class="form-group">
                     <label>Harga</label>
                     <input type="number" name="variations[${variationIndex}][price]" placeholder="Masukkan harga" required>
-                </div>
-                <div class="form-group">
-                    <label>Stok</label>
-                    <input type="number" name="variations[${variationIndex}][stock]" placeholder="Jumlah stok" required>
                 </div>
             </div>
 

@@ -16,7 +16,6 @@ class ProductVariation extends Model
         'name',
         'sku',
         'price',
-        'stock',
         'weight',
         'image',
         'is_active'
@@ -40,6 +39,11 @@ class ProductVariation extends Model
     public function transactionItems()
     {
         return $this->hasMany(TransactionItem::class, 'variation_id');
+    }
+
+    public function warehouseStock()
+    {
+        return $this->hasMany(WarehouseProduct::class, 'variation_id');
     }
 
 }

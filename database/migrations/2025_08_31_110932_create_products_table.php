@@ -32,8 +32,6 @@ return new class extends Migration
             $table->decimal('price', 12, 2); // harga jual
             $table->decimal('discount_price', 12, 2)->nullable(); // harga diskon
             $table->decimal('cost_price', 12, 2)->nullable(); // harga modal
-            $table->integer('stock')->default(0); // stok global (jika multi-gudang, pakai tabel lain)
-            $table->integer('min_stock')->default(0); // notifikasi stok minimum
             $table->string('unit', 50)->default('pcs'); // satuan (pcs, kg, liter, dll)
 
             // Jenis produk

@@ -1081,8 +1081,6 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('edit_price').value            = price;
             document.getElementById('edit_discount_price').value   = discount_price;
             document.getElementById('edit_cost_price').value       = cost_price;
-            document.getElementById('edit_stock').value            = stock;
-            document.getElementById('edit_min_stock').value        = min_stock;
             document.getElementById('edit_unit').value             = unit;
             document.getElementById('edit_product_type').value     = product_type;
             document.getElementById('edit_expiry_date').value      = expiry_date;
@@ -1304,7 +1302,7 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('variation_id').value      = id;
             document.getElementById('variation_product').value = product ?? '';
             document.getElementById('variation_price').value   = price ?? '';
-            document.getElementById('variation_stock').value   = stock ?? '';
+            // document.getElementById('variation_stock').value   = stock ?? '';
             document.getElementById('variation_sku').value     = sku ?? '';   // ✅ set SKU
             document.getElementById('variation_weight').value  = weight ?? ''; // ✅ set weight
 
@@ -1357,4 +1355,41 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
     });
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchProduct');
+    const dropdown = document.getElementById('productResults');
+    const hiddenInput = document.getElementById('product_id');
+
+    searchInput.addEventListener('input', function() {
+        const filter = this.value.toLowerCase();
+        let visible = false;
+
+        dropdown.querySelectorAll('li').forEach(li => {
+            if (li.textContent.toLowerCase().includes(filter) && filter.length > 0) {
+                li.style.display = 'block';
+                visible = true;
+            } else {
+                li.style.display = 'none';
+            }
+        });
+
+        dropdown.style.display = visible ? 'block' : 'none';
+    });
+
+    dropdown.querySelectorAll('li').forEach(li => {
+        li.addEventListener('click', function() {
+            searchInput.value = this.textContent;
+            hiddenInput.value = this.dataset.id;
+            dropdown.style.display = 'none';
+        });
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.product-selector')) {
+            dropdown.style.display = 'none';
+        }
+    });
+});
 </script>

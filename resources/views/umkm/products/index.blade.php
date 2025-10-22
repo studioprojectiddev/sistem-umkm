@@ -102,6 +102,99 @@
         font-size: 12px;
     }
 
+    /* 🔍 Input pencarian */
+    #searchProduct {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        background-color: #fff;
+        font-size: 14px;
+        color: #333;
+        transition: all 0.2s ease;
+    }
+
+    #searchProduct:focus {
+        border-color: #4CAF50;
+        box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
+        outline: none;
+    }
+
+    /* 🔽 Dropdown produk */
+    #product_id {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        background-color: #fff;
+        font-size: 14px;
+        color: #333;
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }
+
+    #product_id:hover {
+        border-color: #4CAF50;
+    }
+
+    #product_id:focus {
+        border-color: #4CAF50;
+        box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
+        outline: none;
+    }
+
+    /* 🌈 Efek saat dropdown diperbesar (ketika mencari) */
+    #product_id[size] {
+        background-color: #fff;
+        border-color: #4CAF50;
+        border-radius: 8px;
+    }
+
+    /* 🌟 Card pembungkus biar lembut */
+    .product-selector {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 16px 20px;
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.05);
+        transition: box-shadow 0.3s ease;
+    }
+
+    .product-selector:hover {
+        box-shadow: 0 6px 15px rgba(0, 0, 0, 0.08);
+    }
+
+    .product-selector input[list] {
+        appearance: none;
+        -webkit-appearance: none;
+        background-color: #fafafa;
+    }
+
+    .dropdown-results {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 100%; /* <= kalau mau lebih kecil, ubah di sini misalnya: 70% */
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        margin-top: 4px;
+        max-height: 180px;
+        overflow-y: auto;
+        z-index: 1001;
+        list-style: none;
+        padding: 0;
+    }
+
+    .dropdown-results li {
+        padding: 8px 10px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .dropdown-results li:hover {
+        background: #f0f8f5;
+    }
+
 </style>
 
 @section('content')
@@ -774,14 +867,18 @@
 
             {{-- Pilih Produk --}}
             <div class="form-row">
-                <div class="form-group">
-                    <label for="product_id">Produk</label>
-                    <select name="product_id" id="product_id" required>
-                        <option value="">-- Pilih Produk --</option>
+                <div class="form-group product-selector" style="position: relative;">
+                    <label for="searchProduct">Pilih Produk</label>
+                    <input type="text" id="searchProduct" placeholder="Ketik nama produk..." autocomplete="off">
+
+                    <ul id="productResults" class="dropdown-results" style="display: none;">
                         @foreach ($products as $product)
-                            <option value="{{ $product->id }}">{{ $product->name }}</option>
+                            <li data-id="{{ $product->id }}">{{ $product->name }}</li>
                         @endforeach
-                    </select>
+                    </ul>
+
+                    <!-- Hidden input untuk kirim ke backend -->
+                    <input type="hidden" name="product_id" id="product_id">
                 </div>
             </div>
 

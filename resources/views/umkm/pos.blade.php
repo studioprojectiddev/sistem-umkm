@@ -694,71 +694,87 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
                         </tr>
                     </thead>
                     <tbody id="productsTableBody">
-                    @foreach($products as $index => $product)
-                    <tr>
-                        <td>{{ $index + 1 }}</td>
-                        <td>
-                            @if($product->thumbnail)
-                                <img src="{{ asset($product->thumbnail) }}" alt="{{ $product->name }}" width="50">
-                            @else
-                                <span>-</span>
-                            @endif
-                        </td>
-                        <td>
-                            {{ $product->name }}
-                            @if($product->variations->count())
-                                <ul class="mb-0 ps-3">
-                                    @foreach($product->variations as $index => $var)
+                        @foreach($products as $index => $product)
+                        <tr>
+                            <td>{{ $index + 1 }}</td>
+                            <td>
+                                @if($product->thumbnail)
+                                    <img src="{{ asset($product->thumbnail) }}" alt="{{ $product->name }}" width="50">
+                                @else
+                                    <span>-</span>
+                                @endif
+                            </td>
+                            <td>
+                                {{-- Nama produk utama --}}
+                                <strong>{{ $product->name }}</strong>
+
+                                {{-- Jika produk punya variasi --}}
+                                @if($product->variations->count())
+                                    <ul class="mb-0 ps-3">
+                                        @foreach($product->variations as $vindex => $var)
+                                            <li>
+                                                {{ $vindex + 1 }}.  
+                                                (Stok: {{ $var->stock }},
+                                                Rp {{ number_format($var->price, 0, ',', '.') }},
+                                                {{ $var->weight ?? 0 }} gr)
+
+                                                @if($var->options->count())
+                                                    <br>
+                                                    <small class="text-muted">
+                                                        [
+                                                        @foreach($var->options as $opt)
+                                                            {{ $opt->attribute->name }}: {{ $opt->value }}@if(!$loop->last), @endif
+                                                        @endforeach
+                                                        ]
+                                                    </small>
+                                                @endif
+                                            </li>
+                                        @endforeach
+                                    </ul>
+                                @else
+                                    {{-- Produk tanpa variasi (non-variasi) --}}
+                                    <ul class="mb-0 ps-3">
                                         <li>
-                                            {{ $index + 1 }}.  
-                                            (Stok: {{ $var->stock }}, 
-                                            Rp {{ number_format($var->price, 0, ',', '.') }}, 
-                                            {{ $var->weight ?? 0 }} gr)
-                                            
-                                            @if($var->options->count())
-                                                <br>
-                                                <small class="text-muted">
-                                                    [
-                                                    @foreach($var->options as $opt)
-                                                        {{ $opt->attribute->name }}: {{ $opt->value }}@if(!$loop->last), @endif
-                                                    @endforeach
-                                                    ]
-                                                </small>
-                                            @endif
+                                            (Stok: {{ $product->stock }},
+                                            Rp {{ number_format($product->price ?? 0, 0, ',', '.') }},
+                                            {{ $product->weight ?? 0 }} gr)
                                         </li>
-                                    @endforeach
-                                </ul>
-                            @endif
-                        </td>
-                        <td>{{ $product->category->name ?? '-' }}</td>
-                        <td>{{ $product->sku ?? $product->barcode ?? '-' }}</td>
-                        <td>
-                            @if($product->is_promo && $product->promo_start <= now() && $product->promo_end >= now())
-                                <span class="text-success fw-bold">
+                                    </ul>
+                                @endif
+                            </td>
+
+                            <td>{{ $product->category->name ?? '-' }}</td>
+                            <td>{{ $product->sku ?? $product->barcode ?? '-' }}</td>
+
+                            <td>
+                                @if($product->is_promo && $product->promo_start <= now() && $product->promo_end >= now())
+                                    <span class="text-success fw-bold">
+                                        Rp {{ number_format($product->final_price, 0, ',', '.') }}
+                                    </span><br>
+                                    <small class="text-muted">
+                                        <del>Rp {{ number_format($product->price, 0, ',', '.') }}</del>
+                                        <br>Promo: {{ \Carbon\Carbon::parse($product->promo_start)->format('d M') }} -
+                                        {{ \Carbon\Carbon::parse($product->promo_end)->format('d M Y') }}
+                                    </small>
+                                @else
                                     Rp {{ number_format($product->final_price, 0, ',', '.') }}
-                                </span><br>
-                                <small class="text-muted">
-                                    <del>Rp {{ number_format($product->price, 0, ',', '.') }}</del>
-                                    <br>Promo: {{ \Carbon\Carbon::parse($product->promo_start)->format('d M') }} -
-                                    {{ \Carbon\Carbon::parse($product->promo_end)->format('d M Y') }}
-                                </small>
-                            @else
-                                Rp {{ number_format($product->final_price, 0, ',', '.') }}
-                            @endif
-                        </td>
-                        <td>{{ $product->stock }}</td>
-                        <td>
-                            <button class="btn btn-sm btn-success btn-add-cart"
-                                data-id="{{ $product->id }}"
-                                data-price="{{ $product->price }}"
-                                data-final-price="{{ $product->final_price }}"
-                                data-has-variation="{{ $product->variations->count() > 0 ? 1 : 0 }}"
-                                data-variations='@json($product->variation_json)'>
-                                + Keranjang
-                            </button>
-                        </td>
-                    </tr>
-                    @endforeach
+                                @endif
+                            </td>
+
+                            <td>{{ $product->stockProduct }}</td>
+
+                            <td>
+                                <button class="btn btn-sm btn-success btn-add-cart"
+                                    data-id="{{ $product->id }}"
+                                    data-price="{{ $product->price }}"
+                                    data-final-price="{{ $product->final_price }}"
+                                    data-has-variation="{{ $product->variations->count() > 0 ? 1 : 0 }}"
+                                    data-variations='@json($product->variation_json)'>
+                                    + Keranjang
+                                </button>
+                            </td>
+                        </tr>
+                        @endforeach
                     </tbody>
                 </table>
                 <div class="table-footer">
@@ -1943,7 +1959,6 @@ document.addEventListener('DOMContentLoaded', function(){
     let currentPage = 1;
 
     function renderTable(page = 1) {
-        function renderTable(page = 1) {
     const tbody = $("#productsTableBody");
     tbody.empty();
 
@@ -2010,7 +2025,7 @@ document.addEventListener('DOMContentLoaded', function(){
                 <td>${categoryName}</td>
                 <td>${product.sku ?? '-'}</td>
                 <td>${priceHtml}</td>
-                <td>${product.stock ?? 0}</td>
+                <td>${product.stockProduct ?? 0}</td>
                 <td>
                     <button class="btn btn-sm btn-success btn-add-cart"
                         data-id="${product.id}"

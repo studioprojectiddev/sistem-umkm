@@ -48,6 +48,8 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::delete('/warehouse/delete/{id}', [ProductController::class, 'destroyWarehouse'])->name('umkm.warehouse.delete');
     Route::get('/umkm/product/{id}/variations', [ProductController::class, 'getProductVariations']);
     Route::post('/umkm/warehouse-transfer', [ProductController::class, 'storeTransfer'])->name('umkm.warehouse.transfer');
+    Route::put('/umkm/warehouse-transfer/{id}', [ProductController::class, 'updateTransfer']);
+    Route::delete('/umkm/warehouse-transfer-delete/{id}', [ProductController::class, 'deleteTransfer']);
 
     // Kategori UMKM (semua via ProductController)
     Route::get('/umkm/category', [ProductController::class, 'category'])->name('umkm.category');

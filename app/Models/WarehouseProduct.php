@@ -12,6 +12,8 @@ class WarehouseProduct extends Model
         'warehouse_id',
         'product_id',
         'variation_id',
+        'supplier_name',
+        'action_type',
         'stock',
         'reserved',
         'min_stock',

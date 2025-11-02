@@ -213,36 +213,49 @@
 }
 .warehouse-card:hover { box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
 
-/* ===============================
-   Modal Styling
-================================= */
+/* ===========================
+   🎨 STYLING MODAL UTAMA
+=========================== */
 .modal {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.5);
+    background: rgba(0, 0, 0, 0.5);
     z-index: 1000;
     justify-content: center;
     align-items: center;
     animation: fadeInBg 0.3s ease;
+    backdrop-filter: blur(3px);
 }
 
+.modal.active {
+    display: flex;
+}
+
+/* ===========================
+   📦 KONTEN MODAL
+=========================== */
 .modal-content {
     background: #fff;
     padding: 1.8rem;
     border-radius: 14px;
-    width: 500px;
-    max-width: 90%;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    width: 520px;
+    max-width: 95%;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
     animation: slideUp 0.3s ease;
+    position: relative;
 }
 
+/* ===========================
+   🧭 HEADER MODAL
+=========================== */
 .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     border-bottom: 2px solid #f0f0f0;
     margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
 }
 
 .modal-header h3 {
@@ -254,73 +267,83 @@
     gap: 8px;
 }
 
-.btn-close {
-  background: none;
-  border: none;
-  font-size: 1.4rem;
-  cursor: pointer;
-  color: #555;
+/* ===========================
+   ❌ TOMBOL CLOSE
+=========================== */
+.btn-close,
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 1.4rem;
+    cursor: pointer;
+    color: #555;
+    transition: color 0.2s ease;
+}
+.btn-close:hover,
+.close-btn:hover {
+    color: #000;
 }
 
+/* ===========================
+   🧾 BODY MODAL
+=========================== */
 .modal-body {
-  padding: 1.2rem 1.5rem;
+    padding: 1.2rem 1.5rem;
 }
 
 .modal-body .form-label {
-  font-weight: 600;
-  display: block;
-  margin-bottom: 4px;
+    font-weight: 600;
+    display: block;
+    margin-bottom: 4px;
 }
 
 .modal-body .form-select,
 .modal-body .form-control {
-  width: 100%;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  transition: border-color 0.2s ease;
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    transition: border-color 0.2s ease;
+    background-color: #fff;
 }
 
 .modal-body .form-select:focus,
 .modal-body .form-control:focus {
-  border-color: #3b82f6;
-  outline: none;
+    border-color: #3b82f6;
+    outline: none;
 }
 
+/* ===========================
+   🧱 GRID / FORM LAYOUT
+=========================== */
 .modal-body .row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 .modal-body .col-md-6 {
-  flex: 1 1 calc(50% - 1rem);
-  min-width: 260px;
+    flex: 1 1 calc(50% - 1rem);
+    min-width: 260px;
 }
 
-.close-btn {
-    cursor: pointer;
-    font-size: 22px;
-    color: #777;
-    transition: color 0.2s ease;
-}
-.close-btn:hover { color: #000; }
-
-.modal-footer {
-  padding: 1rem 1.5rem;
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.6rem;
-  border-top: 1px solid #eee;
-}
-
+/* Form versi grid */
 .form-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 1rem;
 }
 
+.form-grid-2col {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr); /* dua kolom seimbang */
+  gap: 1rem 1.2rem;
+}
+
+/* ===========================
+   🧍 FORM ELEMENT
+=========================== */
 .form-group {
     display: flex;
     flex-direction: column;
@@ -331,25 +354,96 @@
     margin-bottom: 5px;
 }
 .form-group input,
-.form-group textarea {
+.form-group textarea,
+.form-group select {
     border: 1px solid #ccc;
     border-radius: 8px;
     padding: 8px 10px;
     font-size: 14px;
     transition: border-color 0.2s;
+    background-color: #fff;
 }
 .form-group input:focus,
-.form-group textarea:focus {
+.form-group textarea:focus,
+.form-group select:focus {
     border-color: #4e73df;
     outline: none;
 }
 
+/* Kolom penuh (1 baris penuh) */
 .full-width {
     grid-column: 1 / -1;
 }
 
+/* ===========================
+   📌 FOOTER MODAL
+=========================== */
+.modal-footer {
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    border-top: 1px solid #eee;
+}
+
+/* ===========================
+   🔘 BUTTON STYLE
+=========================== */
+.btn {
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-danger {
+    background: #4e73df;
+    color: #fff;
+}
+
+.btn-primary {
+    background: #4e73df;
+    color: #fff;
+}
+.btn-primary:hover {
+    background: #3b5fd9;
+}
+
+.btn-secondary {
+    background: #f1f1f1;
+    color: #333;
+}
+.btn-secondary:hover {
+    background: #e5e5e5;
+}
+
+/* ===========================
+   💡 MISC
+=========================== */
 .required {
     color: red;
+}
+
+/* ===========================
+   🌀 ANIMATIONS
+=========================== */
+@keyframes fadeInBg {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(40px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .form-footer {
@@ -416,6 +510,22 @@
     to { transform: translateY(0); opacity: 1; }
 }
 
+@media (max-width: 480px) {
+    .modal-content {
+        padding: 1.2rem;
+        width: 90%;
+    }
+
+    .modal-header h3 {
+        font-size: 1.1rem;
+    }
+
+    .btn {
+        font-size: 0.9rem;
+        padding: 0.5rem 1rem;
+    }
+}
+
 /* === RESPONSIVE === */
 @media (max-width: 600px) {
     .tab-buttons {
@@ -424,6 +534,12 @@
     .tab-button {
         border-radius: 8px;
     }
+}
+
+@media (max-width: 768px) {
+  .form-grid-2col {
+    grid-template-columns: 1fr; /* jadi 1 kolom di HP */
+  }
 }
 </style>
 
@@ -446,9 +562,20 @@
             <p class="text-muted">Belum ada data gudang.</p>
         @else
         <div class="warehouse-grid">
-            @foreach($warehouses as $w)
-                <div class="warehouse-card">
+            @foreach($warehouses_detail as $w)
+                <div class="warehouse-card"
+                    data-id="{{ $w->id }}"
+                    data-type="{{ $w->type }}"
+                    data-name="{{ $w->name }}"
+                    data-code="{{ $w->code }}"
+                    data-city="{{ $w->city }}"
+                    data-address="{{ $w->address }}"
+                    data-pic_name="{{ $w->pic_name }}"
+                    data-pic_contact="{{ $w->pic_contact }}"
+                    data-phone="{{ $w->phone }}">
+                    
                     <h4>{{ $w->name }}</h4>
+                    <p><strong>Tipe:</strong> {{ ucfirst($w->type) }}</p>
                     <p><strong>Kota:</strong> {{ $w->city ?? '-' }}</p>
                     <p><strong>PIC:</strong> {{ $w->pic_name ?? '-' }}</p>
                     <p><strong>Telepon:</strong> {{ $w->phone ?? '-' }}</p>
@@ -458,6 +585,7 @@
         </div>
         @endif
     </div>
+
 
     {{-- === TAB 2: Manajemen Stok === --}}
     <div class="tab-content" id="stock">
@@ -479,47 +607,41 @@
                         <tr>
                             <th>Produk & Variasi</th>
                             <th>Gudang</th>
+                            <th>Stok In</th>
+                            <th>Stok Out</th>
                             <th>Stok Saat Ini</th>
                             <th>Min. Stok</th>
-                            <th>Posisi Rak</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {{-- Produk tanpa variasi (per warehouse) --}}
+                        {{-- Produk tanpa variasi --}}
                         @foreach ($nonVariationProducts as $item)
                             <tr class="clickable-row"
                                 data-product-id="{{ $item->product_id }}"
-                                data-variation-id=""
                                 data-warehouse-id="{{ $item->warehouse_id }}"
-                                data-product-name="{{ $item->product_name }}"
-                                data-min-stock="{{ $item->min_stock ?? 0 }}"
-                                data-rack-position="{{ $item->rack_position ?? '' }}"
-                                data-current-stock="{{ $item->stock ?? 0 }}"
-                                data-adjusted-stock="{{ $item->adjusted_stock ?? $item->stock ?? 0 }}">
+                                data-product-name="{{ $item->product_name }}">
                                 <td>{{ $item->product_name }}</td>
                                 <td>{{ $item->warehouse_name ?? '-' }}</td>
-                                <td>{{ $item->adjusted_stock ?? $item->stock ?? 0 }}</td>
+                                <td>{{ $item->stock_in }}</td>
+                                <td>{{ $item->stock_out }}</td>
+                                <td>{{ $item->stock_current }}</td>
                                 <td>{{ $item->min_stock ?? 0 }}</td>
-                                <td>{{ $item->rack_position ?? '-' }}</td>
                             </tr>
                         @endforeach
 
-                        {{-- Produk variasi (per warehouse) --}}
+                        {{-- Produk variasi --}}
                         @foreach ($variationProducts as $item)
                             <tr class="clickable-row"
                                 data-product-id="{{ $item->product_id }}"
                                 data-variation-id="{{ $item->variation_id }}"
                                 data-warehouse-id="{{ $item->warehouse_id }}"
-                                data-product-name="{{ $item->product_name }}"
-                                data-min-stock="{{ $item->min_stock ?? 0 }}"
-                                data-rack-position="{{ $item->rack_position ?? '' }}"
-                                data-current-stock="{{ $item->stock ?? 0 }}"
-                                data-adjusted-stock="{{ $item->adjusted_stock ?? $item->stock ?? 0 }}">
+                                data-product-name="{{ $item->product_name }}">
                                 <td>{{ $item->product_name }} ({{ $item->variation_name }})</td>
                                 <td>{{ $item->warehouse_name ?? '-' }}</td>
-                                <td>{{ $item->adjusted_stock ?? $item->stock ?? 0 }}</td>
+                                <td>{{ $item->stock_in }}</td>
+                                <td>{{ $item->stock_out }}</td>
+                                <td>{{ $item->stock_current }}</td>
                                 <td>{{ $item->min_stock ?? 0 }}</td>
-                                <td>{{ $item->rack_position ?? '-' }}</td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -527,9 +649,9 @@
             </div>
 
             <div class="pagination">
-                <button id="prevPage">Prev</button>
+                <button id="prevPage">Sebelumnya</button>
                 <span class="page-info" id="pageInfo"></span>
-                <button id="nextPage">Next</button>
+                <button id="nextPage">Berikutnya</button>
             </div>
         @endif
     </div>
@@ -544,12 +666,6 @@
         <div class="filter-bar mb-3">
             <div class="d-flex gap-2 flex-wrap">
                 <input type="text" id="searchTransferProduct" class="form-control" placeholder="Cari produk atau variasi...">
-                <!-- <select id="filterStatus" class="form-select" style="margin-left:10px;">
-                    <option value="">Semua Status</option>
-                    <option value="pending">Pending</option>
-                    <option value="in_transit">Sedang Dikirim</option>
-                    <option value="completed">Selesai</option>
-                </select> -->
                 <select id="filterFromWarehouse" class="form-select" style="margin-left:10px;">
                     <option value="">Gudang Asal</option>
                     @foreach ($warehouses as $w)
@@ -582,7 +698,17 @@
                     </thead>
                     <tbody>
                         @forelse ($transfers as $index => $item)
-                            <tr>
+                            <tr 
+                                data-id="{{ $item->id }}" 
+                                data-product_id="{{ $item->product_id }}"
+                                data-variation_id="{{ $item->variation_id }}"
+                                data-from_warehouse_id="{{ $item->from_warehouse_id }}"
+                                data-to_warehouse_id="{{ $item->to_warehouse_id }}"
+                                data-quantity="{{ $item->quantity }}"
+                                data-status="{{ $item->status }}"
+                                style="cursor: pointer;"
+                                class="transfer-row"
+                            >
                                 <td>{{ $index + 1 }}</td>
                                 <td>
                                     {{ $item->product_name }}
@@ -626,69 +752,69 @@
 
 <!-- Modal Tambah Gudang -->
 <div id="warehouseModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3><i class="fas fa-warehouse"></i> Tambah Gudang Baru</h3>
-            <button style="top:20px;right:30px;" type="button" class="btn-close close-btn" aria-label="Close">x</button>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3><i class="fas fa-warehouse"></i> Tambah Gudang Baru</h3>
+      <button type="button" class="btn-close close-btn" aria-label="Close">×</button>
+    </div>
+
+    <div class="modal-body">
+      <form id="warehouseForm" method="POST" action="{{ route('umkm.warehouse.store') }}">
+        @csrf
+
+        <div class="form-grid-2col">
+          <!-- Kolom kiri -->
+          <div class="form-group">
+            <label>Tipe <span class="required">*</span></label>
+            <select name="type" class="form-select" required>
+              <option value="store">Toko</option>
+              <option value="warehouse">Gudang</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Nama <span class="required">*</span></label>
+            <input type="text" name="name" required placeholder="Contoh: Gudang Utama">
+          </div>
+
+          <div class="form-group">
+            <label>Kode <span class="required">*</span></label>
+            <input type="text" name="code" required placeholder="Contoh: GUD001">
+          </div>
+
+          <div class="form-group">
+            <label>Kota</label>
+            <input type="text" name="city" placeholder="Contoh: Jakarta">
+          </div>
+
+          <div class="form-group full-width">
+            <label>Alamat Lengkap</label>
+            <textarea name="address" rows="2" placeholder="Masukkan alamat lengkap"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>Nama PIC</label>
+            <input type="text" name="pic_name" placeholder="Nama penanggung jawab">
+          </div>
+
+          <div class="form-group">
+            <label>Kontak PIC</label>
+            <input type="text" name="pic_contact" placeholder="No HP / Email PIC">
+          </div>
+
+          <div class="form-group">
+            <label>Nomor Telepon Gudang</label>
+            <input type="text" name="phone" placeholder="Contoh: 08123456789">
+          </div>
         </div>
 
-        <div class="modal-body">
-            <form id="warehouseForm" method="POST" action="{{ route('umkm.warehouse.store') }}">
-                @csrf
-                <div class="form-grid">
-    
-                    <div class="form-group">
-                        <label>Tipe <span class="required">*</span></label>
-                        <select name="type" class="form-select" id="type" required>
-                            <option value="store">Toko</option>
-                            <option value="warehouse">Gudang</option>
-                        </select>
-                    </div>
-    
-                    <div class="form-group">
-                        <label>Nama<span class="required">*</span></label>
-                        <input type="text" name="name" required placeholder="Contoh: Gudang Utama">
-                    </div>
-    
-                    <div class="form-group">
-                        <label>Kode<span class="required">*</span></label>
-                        <input type="text" name="code" required placeholder="Contoh: GUD001">
-                    </div>
-    
-                    <div class="form-group">
-                        <label>Kota</label>
-                        <input type="text" name="city" placeholder="Contoh: Jakarta">
-                    </div>
-    
-                    <div class="form-group full-width">
-                        <label>Alamat Lengkap</label>
-                        <textarea name="address" rows="2" placeholder="Masukkan alamat lengkap"></textarea>
-                    </div>
-    
-                    <div class="form-group">
-                        <label>Nama PIC</label>
-                        <input type="text" name="pic_name" placeholder="Nama penanggung jawab">
-                    </div>
-    
-                    <div class="form-group">
-                        <label>Kontak PIC</label>
-                        <input type="text" name="pic_contact" placeholder="No HP / Email PIC">
-                    </div>
-    
-                    <div class="form-group">
-                        <label>Nomor Telepon Gudang</label>
-                        <input type="text" name="phone" placeholder="Contoh: 08123456789">
-                    </div>
-                </div>
-    
-                <div class="form-footer">
-                    <button type="submit" class="btn-primary">
-                        <i class="fas fa-save"></i> Simpan
-                    </button>
-                </div>
-            </form>
+        <div class="form-footer" style="display:flex;justify-content:flex-end;gap:8px;margin-top:1rem;">
+          <button type="button" class="btn-secondary close-btn"><i class="fas fa-times"></i></button>
+          <button type="submit" class="btn-primary"><i class="fas fa-save"></i> Simpan</button>
         </div>
+      </form>
     </div>
+  </div>
 </div>
 
 <div id="stockModal" class="modal" style="display:none;">
@@ -728,6 +854,11 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="supplier_name">Nama Supplier</label>
+                    <input type="text" name="supplier_name" id="supplier_name" required placeholder="Masukkan nama supplier">
+                </div>
+
+                <div class="form-group">
                     <label for="quantity">Jumlah Stok</label>
                     <input type="number" name="quantity" id="quantity" min="1" required placeholder="Masukkan jumlah stok">
                 </div>
@@ -761,9 +892,9 @@
 
       <div class="modal-body">
         @csrf
+        <input type="hidden" name="id" id="transferId">
+
         <div class="row g-3">
-          
-          {{-- Gudang Asal --}}
           <div class="col-md-6">
             <label class="form-label">Gudang Asal</label>
             <select name="from_warehouse_id" class="form-select" required>
@@ -774,18 +905,16 @@
             </select>
           </div>
 
-          {{-- Gudang Tujuan --}}
           <div class="col-md-6">
-            <label class="form-label">Gudang Tujuan</label>
+            <label class="form-label">Toko Tujuan</label>
             <select name="to_warehouse_id" class="form-select" required>
               <option value="">-- Pilih Gudang Tujuan --</option>
-              @foreach ($warehouses as $w)
+              @foreach ($warehouses_store as $w)
                 <option value="{{ $w->id }}">{{ $w->name }}</option>
               @endforeach
             </select>
           </div>
 
-          {{-- Produk --}}
           <div class="col-md-6">
             <label class="form-label">Produk</label>
             <select name="product_id" id="productSelect" class="form-select" required>
@@ -796,15 +925,13 @@
             </select>
           </div>
 
-          {{-- Variasi --}}
-          <div class="col-md-6" id="variationWrapper" style="display: none;">
+          <div class="col-md-6" id="variationWrapper" style="display:none;">
             <label class="form-label">Variasi Produk</label>
             <select name="variation_id" id="variationSelect" class="form-select">
               <option value="">-- Tidak Ada Variasi --</option>
             </select>
           </div>
 
-          {{-- Jumlah --}}
           <div class="col-md-6">
             <label class="form-label">Jumlah Transfer</label>
             <input type="number" name="quantity" class="form-control" min="1" required>
@@ -814,7 +941,9 @@
 
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary close-transfer">Tutup</button>
-        <button type="submit" class="btn btn-primary">Kirim Transfer</button>
+        <button type="submit" class="btn btn-primary" id="btnSubmitTransfer">Kirim Transfer</button>
+        <button type="button" class="btn btn-success" id="btnSaveEdit" style="display:none;">Simpan Perubahan</button>
+        <button type="button" class="btn btn-danger" id="btnDeleteTransfer" style="display:none;">Hapus Transfer</button>
       </div>
     </form>
   </div>
@@ -876,37 +1005,58 @@ document.addEventListener("DOMContentLoaded", () => {
             warehouseForm.action = "{{ route('umkm.warehouse.store') }}";
             warehouseForm.reset();
             document.getElementById("deleteWarehouseBtn")?.classList.add("hidden");
-            warehouseModal.style.display = 'flex';
+            warehouseModal.classList.add('active');
         });
     }
 
     if (warehouseModal) {
         const closeWarehouseBtns = warehouseModal.querySelectorAll('.close-btn');
-        closeWarehouseBtns.forEach(btn => btn.addEventListener('click', () => warehouseModal.style.display = 'none'));
-        window.addEventListener('click', e => { if (e.target === warehouseModal) warehouseModal.style.display = 'none'; });
+        closeWarehouseBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                warehouseModal.classList.remove('active');
+            });
+        });
+
+        window.addEventListener('click', e => {
+            if (e.target === warehouseModal) {
+                warehouseModal.classList.remove('active');
+            }
+        });
+
     }
 
-    // Edit gudang dari card
+    // ======================= ✏️ EDIT GUDANG DARI CARD =======================
     document.querySelectorAll('.warehouse-card').forEach(card => {
         card.addEventListener('click', () => {
             if (!warehouseModal || !warehouseForm) return;
+
             currentMode = "edit";
             currentWarehouseId = card.dataset.id;
+
+            // Ubah judul modal
             if (modalTitle) modalTitle.innerHTML = '<i class="fas fa-edit"></i> Edit Gudang';
+
+            // Ubah action form untuk update
             warehouseForm.action = `/umkm/warehouse/update/${currentWarehouseId}`;
 
-            warehouseForm.querySelector('[name="name"]').value = card.querySelector('h4')?.textContent.trim() || '';
+            // Ambil data dari data-* attribute
+            warehouseForm.querySelector('[name="type"]').value = card.dataset.type || 'store';
+            warehouseForm.querySelector('[name="name"]').value = card.dataset.name || '';
+            warehouseForm.querySelector('[name="code"]').value = card.dataset.code || '';
             warehouseForm.querySelector('[name="city"]').value = card.dataset.city || '';
             warehouseForm.querySelector('[name="address"]').value = card.dataset.address || '';
             warehouseForm.querySelector('[name="pic_name"]').value = card.dataset.pic_name || '';
             warehouseForm.querySelector('[name="pic_contact"]').value = card.dataset.pic_contact || '';
             warehouseForm.querySelector('[name="phone"]').value = card.dataset.phone || '';
-            warehouseForm.querySelector('[name="code"]').value = card.dataset.code || '';
 
+            // Tampilkan tombol hapus
             document.getElementById("deleteWarehouseBtn")?.classList.remove("hidden");
-            warehouseModal.style.display = 'flex';
+
+            // Tampilkan modal
+            warehouseModal.classList.add('active');
         });
     });
+
 
     /* ======================= 🗑️ HAPUS & SIMPAN GUDANG ======================= */
     if (warehouseForm) {
@@ -930,7 +1080,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     cancelButtonText: 'Batal',
                 }).then(result => {
                     if (result.isConfirmed) {
-                        fetch(`/umkm/warehouse/delete/${currentWarehouseId}`, {
+                        fetch(`/warehouse/delete/${currentWarehouseId}`, {
                             method: 'DELETE',
                             headers: { 'X-CSRF-TOKEN': "{{ csrf_token() }}" }
                         })
@@ -977,7 +1127,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
 
                 if (data.success) {
-                    warehouseModal.style.display = 'none';
+                    warehouseModal.classList.remove('active');
+
                     warehouseForm.reset();
                     setTimeout(() => location.reload(), 1000);
                 }
@@ -998,6 +1149,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 document.getElementById('variation_id').value = row.dataset.variationId || '';
                 document.getElementById('warehouse_id').value = row.dataset.warehouseId || '';
                 document.getElementById('min_stock').value = row.dataset.minStock || 0;
+                document.getElementById('supplier_name').value = row.dataset.supplierName || '';
                 document.getElementById('rack_position').value = row.dataset.rackPosition || '';
                 document.getElementById('quantity').value = '';
                 document.getElementById('action_type').value = 'add';
@@ -1012,6 +1164,8 @@ document.addEventListener("DOMContentLoaded", () => {
             e.preventDefault();
             const formData = new FormData(stockForm);
             const payload = Object.fromEntries(formData.entries());
+
+            console.log('payload :', payload.product_id);
 
             if (!payload.product_id || !payload.warehouse_id || !payload.quantity) {
                 Swal.fire('Oops!', 'Harap isi semua kolom yang wajib diisi.', 'warning');
@@ -1059,69 +1213,70 @@ document.addEventListener("DOMContentLoaded", () => {
 
     /* ======================= 🚚 TRANSFER ANTAR GUDANG (Modal tanpa Bootstrap) ======================= */
     const transferModal = document.getElementById('transferModal');
-    const openTransferBtn = document.querySelector('.open-transfer'); // tombol yang membuka modal transfer
-    const closeTransferBtns = Array.from(document.querySelectorAll('.close-transfer'));
+    const openTransferBtn = document.querySelector('.open-transfer');
+    const closeTransferBtns = document.querySelectorAll('.close-transfer');
+    const transferForm = document.getElementById('transferForm');
     const productSelect = document.getElementById('productSelect');
     const variationWrapper = document.getElementById('variationWrapper');
     const variationSelect = document.getElementById('variationSelect');
-    const transferForm = document.getElementById('transferForm');
+    const btnSubmit = document.getElementById('btnSubmitTransfer');
+    const btnSaveEdit = document.getElementById('btnSaveEdit');
+    const btnDelete = document.getElementById('btnDeleteTransfer');
+    const title = transferModal.querySelector('.modal-title');
 
-    // Buka modal transfer
-    if (openTransferBtn && transferModal) {
+    /* ================== 🔹 OPEN MODAL (CREATE) ================== */
+    if (openTransferBtn) {
         openTransferBtn.addEventListener('click', () => {
-            // pastikan default state
-            transferForm?.reset();
-            variationSelect?.innerHTML && (variationSelect.innerHTML = '<option value="">-- Tidak Ada Variasi --</option>');
-            variationWrapper && (variationWrapper.style.display = 'none');
+            transferForm.reset();
+            variationSelect.innerHTML = '<option value="">-- Tidak Ada Variasi --</option>';
+            variationWrapper.style.display = 'none';
+
+            // Mode Tambah
+            title.textContent = 'Tambah Transfer Stok';
+            btnSubmit.style.display = 'inline-block';
+            btnSaveEdit.style.display = 'none';
+            btnDelete.style.display = 'none';
+
             transferModal.style.display = 'flex';
-
-            // set active tab to stock so pagination keeps focus
-            activateTab('stock');
         });
     }
 
-    // Tutup modal transfer
-    closeTransferBtns.forEach(btn => btn.addEventListener('click', () => {
-        transferModal.style.display = 'none';
-    }));
-
-    // klik luar modal transfer untuk tutup
-    if (transferModal) {
-        transferModal.addEventListener('click', e => {
-            if (e.target === transferModal) transferModal.style.display = 'none';
+    /* ================== 🔹 CLOSE MODAL ================== */
+    closeTransferBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            transferModal.style.display = 'none';
         });
-    }
+    });
 
-    // Muat variasi berdasarkan productSelect
-    if (productSelect && variationSelect) {
+    transferModal.addEventListener('click', e => {
+        if (e.target === transferModal) transferModal.style.display = 'none';
+    });
+
+    /* ================== 🔹 LOAD VARIASI PRODUK ================== */
+    if (productSelect) {
         productSelect.addEventListener('change', function () {
             const productId = this.value;
             variationSelect.innerHTML = '<option value="">-- Tidak Ada Variasi --</option>';
-            variationWrapper && (variationWrapper.style.display = 'none');
+            variationWrapper.style.display = 'none';
 
             if (!productId) return;
 
             fetch(`/umkm/product/${productId}/variations`)
                 .then(res => res.json())
                 .then(data => {
-                    // ekspektasi: { success: true, variations: [...] }
                     if (data && data.success && Array.isArray(data.variations) && data.variations.length) {
                         variationSelect.innerHTML = '<option value="">-- Pilih Variasi --</option>';
                         data.variations.forEach(v => {
                             variationSelect.innerHTML += `<option value="${v.id}">${v.name}</option>`;
                         });
-                        variationWrapper && (variationWrapper.style.display = 'block');
-                    } else {
-                        variationWrapper && (variationWrapper.style.display = 'none');
+                        variationWrapper.style.display = 'block';
                     }
                 })
-                .catch(() => {
-                    variationWrapper && (variationWrapper.style.display = 'none');
-                });
+                .catch(() => variationWrapper.style.display = 'none');
         });
     }
 
-    // Submit transfer
+    /* ================== 🔹 CREATE / SUBMIT ================== */
     if (transferForm) {
         transferForm.addEventListener('submit', e => {
             e.preventDefault();
@@ -1154,11 +1309,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         },
                         body: formData
                     })
-                    .then(async res => {
-                        let data;
-                        try { data = await res.json(); }
-                        catch { data = { success: false, message: 'Respons server tidak valid.' }; }
-
+                    .then(res => res.json())
+                    .then(data => {
                         Swal.fire({
                             icon: data.success ? 'success' : 'error',
                             title: data.success ? 'Berhasil!' : 'Gagal!',
@@ -1167,7 +1319,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
                         if (data.success) {
                             transferModal.style.display = 'none';
-                            transferForm.reset();
                             setTimeout(() => location.reload(), 1000);
                         }
                     })
@@ -1176,6 +1327,98 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         });
     }
+
+    /* ================== 🔹 EDIT MODE ================== */
+    document.querySelectorAll('#transferTable tbody tr.transfer-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const id = row.dataset.id;
+            const productId = row.dataset.product_id;
+            const variationId = row.dataset.variation_id || '';
+            const fromId = row.dataset.from_warehouse_id;
+            const toId = row.dataset.to_warehouse_id;
+            const quantity = row.dataset.quantity;
+
+            transferForm.reset();
+            transferForm.querySelector('#transferId').value = id;
+            transferForm.querySelector('select[name="from_warehouse_id"]').value = fromId;
+            transferForm.querySelector('select[name="to_warehouse_id"]').value = toId;
+            transferForm.querySelector('input[name="quantity"]').value = quantity;
+
+            // Isi produk
+            if (productId) {
+                productSelect.value = productId;
+                // kalau produk punya variasi, panggil ulang endpoint
+                fetch(`/umkm/product/${productId}/variations`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success && data.variations.length) {
+                            variationSelect.innerHTML = '<option value="">-- Pilih Variasi --</option>';
+                            data.variations.forEach(v => {
+                                variationSelect.innerHTML += `<option value="${v.id}" ${variationId == v.id ? 'selected' : ''}>${v.name}</option>`;
+                            });
+                            variationWrapper.style.display = 'block';
+                        } else {
+                            variationWrapper.style.display = 'none';
+                        }
+                    });
+            }
+
+            // Ubah ke mode edit
+            title.textContent = 'Edit Transfer Stok';
+            btnSubmit.style.display = 'none';
+            btnSaveEdit.style.display = 'inline-block';
+            btnDelete.style.display = 'inline-block';
+
+            transferModal.style.display = 'flex';
+        });
+    });
+
+    /* ================== 🔹 UPDATE ================== */
+    btnSaveEdit.addEventListener('click', () => {
+        const id = transferForm.querySelector('#transferId').value;
+        const formData = new FormData(transferForm);
+
+        fetch(`/umkm/warehouse-transfer/${id}`, {
+            method: 'POST', // kalau pakai Laravel, gunakan POST + _method=PUT
+            headers: {
+                'X-CSRF-TOKEN': "{{ csrf_token() }}"
+            },
+            body: new URLSearchParams([...formData, ['_method', 'PUT']])
+        })
+        .then(res => res.json())
+        .then(res => {
+            Swal.fire('Berhasil', 'Transfer berhasil diperbarui', 'success');
+            setTimeout(() => location.reload(), 800);
+        })
+        .catch(() => Swal.fire('Error', 'Gagal memperbarui transfer', 'error'));
+    });
+
+    /* ================== 🔹 DELETE ================== */
+    btnDelete.addEventListener('click', () => {
+        const id = transferForm.querySelector('#transferId').value;
+
+        Swal.fire({
+            title: 'Hapus Transfer?',
+            text: 'Data akan dihapus permanen!',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Ya, Hapus',
+            cancelButtonText: 'Batal'
+        }).then(result => {
+            if (result.isConfirmed) {
+                fetch(`/umkm/warehouse-transfer-delete/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-TOKEN': "{{ csrf_token() }}" }
+                })
+                .then(res => res.json())
+                .then(res => {
+                    Swal.fire('Dihapus', 'Transfer berhasil dihapus', 'success');
+                    setTimeout(() => location.reload(), 800);
+                })
+                .catch(() => Swal.fire('Error', 'Gagal menghapus transfer', 'error'));
+            }
+        });
+    });
 
     /* ======================= 🔢 PAGINATION MURNI CSS+JS UNTUK STOCK TABLE ======================= */
     // Pagination elements (pastikan ada elemen di blade: #prevPage, #pageInfo, #nextPage)

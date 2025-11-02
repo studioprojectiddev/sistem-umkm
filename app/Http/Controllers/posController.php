@@ -22,27 +22,82 @@ class PosController extends Controller
      */
     public function index()
     {
-        // 🔹 Ambil semua produk
         $products = Product::with([
             'category',
             'variations.options.attribute'
-        ])->select(
-            'id', 'name', 'sku', 'price', 'cost_price', 'discount_price',
-            'is_promo', 'promo_price', 'promo_start', 'promo_end',
-            'thumbnail', 'unit'
-        )->get();
+        ])
+        ->select(
+            'products.id',
+            'products.name',
+            'products.sku',
+            'products.price',
+            'products.cost_price',
+            'products.discount_price',
+            'products.is_promo',
+            'products.promo_price',
+            'products.promo_start',
+            'products.promo_end',
+            'products.thumbnail',
+            'products.unit',
+            // Hitung stok total dari log + transfer
+            DB::raw("
+                COALESCE((
+                    SELECT 
+                        (SUM(CASE WHEN wt.status = 'received' THEN wt.quantity ELSE 0 END))
+                    FROM warehouse_transfers wt
+                    WHERE wt.product_id = products.id
+                    AND variation_id is null
+                ), 0) AS stockProduct
+            ")
+        )
+        ->leftJoin('warehouse_products', 'warehouse_products.product_id', '=', 'products.id')
+        ->leftJoin('warehouses', 'warehouses.id', '=', 'warehouse_products.warehouse_id')
+        ->whereNull('warehouse_products.variation_id')
+        ->where(function ($q) {
+            $q->where('warehouses.type', 'warehouse')
+              ->orWhereNull('warehouses.type');
+        })
+        ->distinct()
+        ->get();
 
-        // 🔹 Ambil total stok masuk ke toko (warehouse type = store)
-        $warehouseStock = DB::table('warehouse_transfers')
-            ->join('warehouses', 'warehouses.id', '=', 'warehouse_transfers.to_warehouse_id')
-            ->where('warehouses.type', 'store')
-            ->where('warehouse_transfers.status', 'received')
+        // 🔹 Ambil semua gudang bertipe store
+        $storeWarehouses = DB::table('warehouses')->where('type', 'store')->pluck('id');
+
+        // 🔹 Ambil total stok dari warehouse_stock_logs (add & reduce) untuk store
+        $warehouseLogs = DB::table('warehouse_stock_logs')
+            ->whereIn('warehouse_id', $storeWarehouses)
             ->select(
-                'warehouse_transfers.product_id',
-                'warehouse_transfers.variation_id',
-                DB::raw('SUM(warehouse_transfers.quantity) as total_in')
+                'product_id',
+                'variation_id',
+                DB::raw('SUM(CASE WHEN action_type = "add" THEN quantity ELSE 0 END) as total_add'),
+                DB::raw('SUM(CASE WHEN action_type = "reduce" THEN quantity ELSE 0 END) as total_reduce')
             )
-            ->groupBy('warehouse_transfers.product_id', 'warehouse_transfers.variation_id')
+            ->groupBy('product_id', 'variation_id')
+            ->get();
+
+        // 🔹 Ambil transfer masuk ke store (barang diterima)
+        $transferIn = DB::table('warehouse_transfers')
+        ->whereIn('to_warehouse_id', $storeWarehouses)
+        ->where('status', 'received')
+        ->whereNotNull('variation_id')
+        ->select(
+            'product_id',
+            'variation_id',
+            DB::raw('SUM(quantity) as total_in')
+        )
+        ->groupBy('product_id', 'variation_id')
+        ->get();
+
+        // 🔹 Ambil transfer keluar dari store (barang dikirim)
+        $transferOut = DB::table('warehouse_transfers')
+            ->whereIn('from_warehouse_id', $storeWarehouses)
+            ->whereIn('status', ['sent', 'received'])
+            ->select(
+                'product_id',
+                'variation_id',
+                DB::raw('SUM(quantity) as total_out')
+            )
+            ->groupBy('product_id', 'variation_id')
             ->get();
 
         // 🔹 Ambil total barang yang terjual dari transaksi
@@ -55,11 +110,23 @@ class PosController extends Controller
             ->groupBy('product_id', 'variation_id')
             ->get();
 
-        // 🔹 Ubah hasil stok masuk dan stok keluar ke bentuk map agar mudah dipakai
+        // 🔹 Buat peta stok agar mudah digunakan
         $stockMap = [];
-        foreach ($warehouseStock as $s) {
-            $key = $s->product_id . '-' . ($s->variation_id ?? 0);
-            $stockMap[$key]['in'] = $s->total_in;
+
+        foreach ($warehouseLogs as $log) {
+            $key = $log->product_id . '-' . ($log->variation_id ?? 0);
+            $stockMap[$key]['add'] = $log->total_add;
+            $stockMap[$key]['reduce'] = $log->total_reduce;
+        }
+
+        foreach ($transferIn as $t) {
+            $key = $t->product_id . '-' . ($t->variation_id ?? 0);
+            $stockMap[$key]['transfer_in'] = $t->total_in;
+        }
+
+        foreach ($transferOut as $t) {
+            $key = $t->product_id . '-' . ($t->variation_id ?? 0);
+            $stockMap[$key]['transfer_out'] = $t->total_out;
         }
 
         foreach ($sales as $s) {
@@ -69,33 +136,46 @@ class PosController extends Controller
 
         // 🔹 Tambahkan informasi stok aktual & harga ke setiap produk
         $products->each(function ($product) use ($stockMap) {
-            // Harga final (cek promo)
+            // Tentukan harga final (cek promo aktif)
             $product->final_price = ($product->is_promo && $product->promo_start <= now() && $product->promo_end >= now())
                 ? $product->promo_price
                 : $product->price;
 
             // Produk tanpa variasi
             $key = $product->id . '-0';
-            $total_in = $stockMap[$key]['in'] ?? 0;
-            $total_sold = $stockMap[$key]['sold'] ?? 0;
-            $product->stock = max(0, $total_in - $total_sold);
+            $add = $stockMap[$key]['add'] ?? 0;
+            $reduce = $stockMap[$key]['reduce'] ?? 0;
+            $transfer_in = $stockMap[$key]['transfer_in'] ?? 0;
+            $transfer_out = $stockMap[$key]['transfer_out'] ?? 0;
+            $sold = $stockMap[$key]['sold'] ?? 0;
+
+            // Rumus stok aktual di toko
+            $total_in = $transfer_in;
+            $total_out = $reduce + $transfer_out + $sold;
+            $product->stock = max(0, $total_in);
 
             // Produk dengan variasi
             $product->variation_json = $product->variations->map(function ($v, $index) use ($stockMap, $product) {
                 $key = $product->id . '-' . $v->id;
-                $total_in = $stockMap[$key]['in'] ?? 0;
-                $total_sold = $stockMap[$key]['sold'] ?? 0;
-                $v_stock = max(0, $total_in - $total_sold);
+                $add = $stockMap[$key]['add'] ?? 0;
+                $reduce = $stockMap[$key]['reduce'] ?? 0;
+                $transfer_in = $stockMap[$key]['transfer_in'] ?? 0;
+                $transfer_out = $stockMap[$key]['transfer_out'] ?? 0;
+                $sold = $stockMap[$key]['sold'] ?? 0;
+
+                $total_in = $transfer_in;
+                $total_out = $reduce + $transfer_out + $sold;
+                $v_stock = max(0, $total_in);
 
                 return [
-                    "no"           => $index + 1,
-                    "variation_id" => $v->id,
-                    "name"         => $v->name,
-                    "price"        => $v->price,
-                    "stock"        => $v_stock,
-                    "sold"         => $total_sold,
-                    "weight"       => $v->weight ?? 0,
-                    "options"      => $v->options->map(function ($opt) {
+                    "no"            => $index + 1,
+                    "variation_id"  => $v->id,
+                    "name"          => $v->name,
+                    "price"         => $v->price,
+                    "stock"         => $v_stock,
+                    "sold"          => $sold,
+                    "weight"        => $v->weight ?? 0,
+                    "options"       => $v->options->map(function ($opt) {
                         return [
                             "attribute" => $opt->attribute->name,
                             "value"     => $opt->value,
@@ -104,7 +184,7 @@ class PosController extends Controller
                 ];
             })->toArray();
 
-            // Hitung total terjual produk (tanpa variasi + variasi)
+            // Total terjual semua variasi + non variasi
             $product->total_sold = ($stockMap[$key]['sold'] ?? 0)
                 + collect($product->variation_json)->sum('sold');
         });
@@ -122,6 +202,7 @@ class PosController extends Controller
                 'stock' => $product->stock,
                 'unit' => $product->unit ?? 'pcs',
                 'variations' => $product->variation_json,
+                'stockProduct'  => $product->stockProduct ?? $product->stock ?? 0,
             ];
         })->toArray();
 

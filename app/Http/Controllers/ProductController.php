@@ -762,26 +762,78 @@ class ProductController extends Controller
 
     public function detail($id)
     {
+        // 🔹 Ambil produk dan variasi (tanpa kolom stock, karena tidak ada di tabel)
         $product = Product::with(['variations' => function($q){
-            $q->select('id','product_id','name','price','stock')
-            ->withSum('transactionItems', 'quantity'); // menambahkan atribut transaction_items_sum_quantity
+            $q->select('id','product_id','name','price');
         }])->findOrFail($id);
 
-        $variations = $product->variations->map(function($v){
+        // 🔹 Ambil total transfer (stok masuk ke toko) dari warehouse_transfers
+        $transferData = DB::table('warehouse_transfers')
+            ->select(
+                'product_id',
+                'variation_id',
+                DB::raw('SUM(quantity) as total_transfer')
+            )
+            ->where('product_id', $id)
+            ->where('status', 'received')
+            ->groupBy('product_id', 'variation_id')
+            ->get();
+
+        $transferMap = [];
+        foreach ($transferData as $t) {
+            $key = $t->product_id . '-' . ($t->variation_id ?? 0);
+            $transferMap[$key] = (int) $t->total_transfer;
+        }
+
+        // 🔹 Ambil total penjualan (keluar) dari transaction_items
+        $soldData = DB::table('transaction_items')
+            ->select(
+                'product_id',
+                'variation_id',
+                DB::raw('SUM(quantity) as total_sold')
+            )
+            ->where('product_id', $id)
+            ->groupBy('product_id', 'variation_id')
+            ->get();
+
+        $soldMap = [];
+        foreach ($soldData as $s) {
+            $key = $s->product_id . '-' . ($s->variation_id ?? 0);
+            $soldMap[$key] = (int) $s->total_sold;
+        }
+
+        // 🔹 Susun variasi lengkap dengan perhitungan stok
+        $variations = $product->variations->map(function($v) use ($transferMap, $soldMap, $product){
+            $key = $product->id . '-' . $v->id;
+
+            $total_transfer = $transferMap[$key] ?? 0;
+            $total_sold = $soldMap[$key] ?? 0;
+
+            // hitung stok akhir
+            $stock = max(0, $total_transfer - $total_sold);
+
             return [
                 'id'         => $v->id,
                 'product_id' => $v->product_id,
                 'name'       => $v->name,
                 'price'      => $v->price,
-                'stock'      => $v->stock,
-                // withSum menghasilkan properti transaction_items_sum_quantity
-                'sold'       => (int) ($v->transaction_items_sum_quantity ?? 0),
+                'stock'      => $stock,
+                'sold'       => $total_sold,
             ];
         })->values();
 
+        // 🔹 Hitung juga stok produk induk (tanpa variasi)
+        $keyInduk = $product->id . '-0';
+        $stokInduk = $transferMap[$keyInduk] ?? 0;
+        $soldInduk = $soldMap[$keyInduk] ?? 0;
+        $stokAkhirInduk = max(0, $stokInduk - $soldInduk);
+
+        // 🔹 Kembalikan respons JSON
         return response()->json([
             'id'         => $product->id,
             'name'       => $product->name,
+            'stock'      => $stokAkhirInduk,
+            'sold'       => $soldInduk,
             'variations' => $variations,
         ]);
     }
@@ -1173,69 +1225,132 @@ class ProductController extends Controller
 
     public function warehouse()
     {
-        // === 1️⃣ Ambil semua gudang (hanya type = warehouse) ===
-        $warehousesQuery = DB::table('warehouses')
-            ->select('id', 'name', 'city', 'address', 'phone', 'pic_name', 'code', 'pic_contact');
-    
-        if (Schema::hasColumn('warehouses', 'type')) {
-            $warehousesQuery->where('type', 'warehouse'); // hanya ambil gudang
-        }
-    
-        $warehouses = DB::table('warehouses')->get();
-    
-        // === 3️⃣ Produk tanpa variasi (stok per warehouse) ===
+        // === 1️⃣ Ambil semua gudang ===
+        $warehouses = DB::table('warehouses')->where('type', 'warehouse')->get();
+        $warehouses_store = DB::table('warehouses')->where('type', 'store')->get();
+        $warehouses_detail = DB::table('warehouses')->get();
+
+        // === 2️⃣ Produk tanpa variasi ===
         $nonVariationProducts = DB::table('products')
-            ->leftJoin('warehouse_products', function ($join) {
-                $join->on('warehouse_products.product_id', '=', 'products.id')
-                    ->whereNull('warehouse_products.variation_id');
-            })
+            ->leftJoin('warehouse_products', 'warehouse_products.product_id', '=', 'products.id')
             ->leftJoin('warehouses', 'warehouses.id', '=', 'warehouse_products.warehouse_id')
             ->select(
-                'products.id as id',
+                'warehouse_products.id',
+                'warehouses.name as warehouse_name',
+                'warehouses.type as warehouse_type',
                 'products.id as product_id',
                 'products.name as product_name',
                 'products.name as name',
                 'products.sku',
                 'products.price',
-                'warehouses.id as warehouse_id',
-                'warehouses.name as warehouse_name',
-                'warehouses.type as warehouse_type',
-                DB::raw('COALESCE(warehouse_products.stock, 0) as stock'),
-                DB::raw('COALESCE(warehouse_products.min_stock, 0) as min_stock'),
-                'warehouse_products.rack_position'
+                'warehouse_products.warehouse_id',
             )
-            ->where('warehouses.type', 'warehouse') // hanya tampilkan warehouse
-            ->orWhereNull('warehouses.type') // tetap tampil jika belum punya gudang
-            ->orderBy('products.name')
+            ->whereNull('warehouse_products.variation_id')
+            ->where(function ($q) {
+                $q->where('warehouses.type', 'warehouse')
+                ->orWhereNull('warehouses.type'); // produk yang belum punya gudang tetap tampil
+            })
+            ->distinct()  
             ->get();
-    
-        // === 4️⃣ Produk dengan variasi (stok per warehouse) ===
+
+        // === 3️⃣ Produk dengan variasi ===
         $variationProducts = DB::table('product_variations')
             ->join('products', 'products.id', '=', 'product_variations.product_id')
-            ->leftJoin('warehouse_products', function ($join) {
-                $join->on('warehouse_products.variation_id', '=', 'product_variations.id');
-            })
+            ->leftJoin('warehouse_products', 'warehouse_products.variation_id', '=', 'product_variations.id')
             ->leftJoin('warehouses', 'warehouses.id', '=', 'warehouse_products.warehouse_id')
             ->select(
-                'product_variations.id as variation_id',
-                'products.id as product_id',
-                DB::raw("CONCAT(products.name, ' - ', product_variations.name) as product_name"),
-                'product_variations.name as variation_name',
-                'product_variations.sku',
-                'product_variations.price',
-                'warehouses.id as warehouse_id',
+                'warehouse_products.id',
                 'warehouses.name as warehouse_name',
                 'warehouses.type as warehouse_type',
-                DB::raw('COALESCE(warehouse_products.stock, 0) as stock'),
-                DB::raw('COALESCE(warehouse_products.min_stock, 0) as min_stock'),
-                'warehouse_products.rack_position'
+                'products.id as product_id',
+                'products.name as product_name',
+                'products.name as name',
+                'products.sku',
+                'products.price',
+                'product_variations.name as variation_name',
+                'warehouse_products.warehouse_id',
+                'product_variations.id as variation_id'
             )
-            ->where('warehouses.type', 'warehouse') // hanya warehouse
-            ->orWhereNull('warehouses.type')
-            ->orderBy('products.name')
+            ->where(function ($q) {
+                $q->where('warehouses.type', 'warehouse')
+                ->orWhereNull('warehouses.type'); // produk yang belum punya gudang tetap tampil
+            })
+            ->distinct()
             ->get();
-    
-        // === 5️⃣ Gabungkan untuk dropdown produk ===
+            
+        // === 4️⃣ Hitung stok dari warehouse_stock_logs ===
+        foreach ($nonVariationProducts as $p) {
+            // stok masuk (add)
+            $stockIn = DB::table('warehouse_stock_logs')
+                ->where('warehouse_id', $p->warehouse_id)
+                ->where('product_id', $p->product_id)
+                ->whereNull('variation_id')
+                ->where('action_type', 'add')
+                ->sum('quantity');
+
+            // stok keluar (reduce)
+            $stockOut = DB::table('warehouse_stock_logs')
+                ->where('warehouse_id', $p->warehouse_id)
+                ->where('product_id', $p->product_id)
+                ->whereNull('variation_id')
+                ->where('action_type', 'reduce')
+                ->sum('quantity');
+
+            // transfer masuk (barang diterima)
+            $transferIn = DB::table('warehouse_transfers')
+                ->where('to_warehouse_id', $p->warehouse_id)
+                ->where('product_id', $p->product_id)
+                ->whereNull('variation_id')
+                ->where('status', 'received')
+                ->sum('quantity');
+
+            // transfer keluar (barang dikirim)
+            $transferOut = DB::table('warehouse_transfers')
+                ->where('from_warehouse_id', $p->warehouse_id)
+                ->where('product_id', $p->product_id)
+                ->whereNull('variation_id')
+                ->whereIn('status', ['sent', 'received'])
+                ->sum('quantity');
+
+            // Hitung akhir
+            $p->stock_in = $stockIn + $transferIn;
+            $p->stock_out = $stockOut + $transferOut;
+            $p->stock_current = max(0, ($p->stock_in - $p->stock_out));
+        }
+
+        foreach ($variationProducts as $v) {
+            $stockIn = DB::table('warehouse_stock_logs')
+                ->where('warehouse_id', $v->warehouse_id)
+                ->where('product_id', $v->product_id)
+                ->where('variation_id', $v->variation_id)
+                ->where('action_type', 'add')
+                ->sum('quantity');
+
+            $stockOut = DB::table('warehouse_stock_logs')
+                ->where('warehouse_id', $v->warehouse_id)
+                ->where('product_id', $v->product_id)
+                ->where('variation_id', $v->variation_id)
+                ->where('action_type', 'reduce')
+                ->sum('quantity');
+
+            $transferIn = DB::table('warehouse_transfers')
+                ->where('to_warehouse_id', $v->warehouse_id)
+                ->where('variation_id', $v->variation_id)
+                ->where('status', 'received')
+                ->sum('quantity');
+
+            $transferOut = DB::table('warehouse_transfers')
+                ->where('from_warehouse_id', $v->warehouse_id)
+                ->where('variation_id', $v->variation_id)
+                ->whereIn('status', ['sent', 'received'])
+                ->sum('quantity');
+
+            $v->stock_in = $stockIn + $transferIn;
+            $v->stock_out = $stockOut + $transferOut;
+            $v->stock_current = max(0, ($v->stock_in - $v->stock_out));
+        }
+
+        // === 5️⃣ Gabungkan dropdown produk ===
         $products = collect();
         foreach ($nonVariationProducts as $p) {
             $products->push((object)[
@@ -1253,48 +1368,22 @@ class ProductController extends Controller
                 'type' => 'variation'
             ]);
         }
-    
-        // === 6️⃣ Hitung stok aktual (hanya warehouse) ===
-        foreach ($nonVariationProducts as $p) {
-            if ($p->warehouse_type === 'warehouse' && $p->warehouse_id) {
-                $outgoing = DB::table('warehouse_transfers')
-                    ->where('from_warehouse_id', $p->warehouse_id)
-                    ->where('product_id', $p->product_id)
-                    ->whereNull('variation_id')
-                    ->whereIn('status', ['pending', 'in_transit'])
-                    ->sum('quantity');
-    
-                $p->adjusted_stock = max(0, (int)$p->stock - (int)$outgoing);
-            } else {
-                $p->adjusted_stock = (int)$p->stock;
-            }
-        }
-    
-        foreach ($variationProducts as $v) {
-            if ($v->warehouse_type === 'warehouse' && $v->warehouse_id) {
-                $outgoing = DB::table('warehouse_transfers')
-                    ->where('from_warehouse_id', $v->warehouse_id)
-                    ->where('variation_id', $v->variation_id)
-                    ->whereIn('status', ['pending', 'in_transit'])
-                    ->sum('quantity');
-    
-                $v->adjusted_stock = max(0, (int)$v->stock - (int)$outgoing);
-            } else {
-                $v->adjusted_stock = (int)$v->stock;
-            }
-        }
-    
-        // === 7️⃣ Data transfer antar gudang ===
+
+        // === 6️⃣ Data transfer antar gudang ===
         $transfers = DB::table('warehouse_transfers')
             ->leftJoin('warehouses as w_from', 'w_from.id', '=', 'warehouse_transfers.from_warehouse_id')
             ->leftJoin('warehouses as w_to', 'w_to.id', '=', 'warehouse_transfers.to_warehouse_id')
             ->leftJoin('products', 'products.id', '=', 'warehouse_transfers.product_id')
             ->leftJoin('product_variations', 'product_variations.id', '=', 'warehouse_transfers.variation_id')
             ->select(
+                'products.id as product_id',
                 'warehouse_transfers.id',
                 'warehouse_transfers.quantity',
                 'warehouse_transfers.status',
                 'warehouse_transfers.created_at',
+                'product_variations.id as variation_id',
+                'w_from.id as from_warehouse_id', 
+                'w_to.id as to_warehouse_id',
                 'w_from.name as from_warehouse_name',
                 'w_to.name as to_warehouse_name',
                 DB::raw('COALESCE(products.name, "Produk Tidak Ditemukan") as product_name'),
@@ -1302,23 +1391,25 @@ class ProductController extends Controller
             )
             ->orderByDesc('warehouse_transfers.created_at')
             ->get();
-    
+
         foreach ($transfers as $t) {
             if (isset($t->created_at) && is_string($t->created_at)) {
                 $t->created_at = Carbon::parse($t->created_at);
             }
         }
-    
-        // === 8️⃣ Return ke view ===
+
+        // === 7️⃣ Return ke view ===
         return view('umkm.products.warehouse', compact(
             'warehouses',
             'products',
             'nonVariationProducts',
             'variationProducts',
+            'warehouses_store',
+            'warehouses_detail',
             'transfers'
         ));
     }
-
+    
     public function getProductVariations($id)
     {
         $variations = DB::table('product_variations')
@@ -1411,41 +1502,28 @@ class ProductController extends Controller
     public function updateStock(Request $request)
     {
         try {
-            // Jika body JSON (misal dari fetch API)
+            // 🧩 Jika request JSON
             if ($request->isJson()) {
                 $data = $request->json()->all();
                 $request->merge($data);
             }
 
-            // Validasi data dasar
+            // 🧾 Validasi data
             $validated = $request->validate([
                 'warehouse_id'  => 'required|exists:warehouses,id',
-                'product_id'    => 'required|integer',
-                'variation_id'  => 'nullable|integer',
+                'product_id'    => 'required|integer|exists:products,id',
+                'supplier_name' => 'required|string',
+                'variation_id'  => 'nullable|integer|exists:product_variations,id',
                 'action_type'   => 'required|in:add,reduce',
                 'quantity'      => 'required|integer|min:1',
                 'min_stock'     => 'nullable|integer|min:0',
                 'rack_position' => 'nullable|string|max:100',
             ]);
 
-            $productId = $request->product_id;
+            $productId   = $request->product_id;
             $variationId = $request->variation_id ?: null;
 
-            // 🔍 Cek produk valid
-            $product = \App\Models\Product::find($productId);
-            if (!$product) {
-                return response()->json(['success' => false, 'message' => 'Produk tidak ditemukan.']);
-            }
-
-            // 🔍 Jika ada variation_id, pastikan variasinya valid
-            if ($variationId) {
-                $variation = \App\Models\ProductVariation::find($variationId);
-                if (!$variation) {
-                    return response()->json(['success' => false, 'message' => 'Variasi produk tidak ditemukan.']);
-                }
-            }
-
-            // 🔍 Cek stok existing di tabel warehouse_products
+            // 🔍 Ambil data stok di warehouse_products
             $record = \App\Models\WarehouseProduct::where('warehouse_id', $request->warehouse_id)
                 ->where('product_id', $productId)
                 ->where(function ($q) use ($variationId) {
@@ -1454,45 +1532,73 @@ class ProductController extends Controller
                 })
                 ->first();
 
-            // 🆕 Jika belum ada data stok → buat baru
-            if (!$record) {
+            // 🔢 Hitung stok baru
+            if ($record) {
+                $newStock = $record->stock;
+
+                if ($request->action_type === 'add') {
+                    $newStock += $request->quantity;
+                } elseif ($request->action_type === 'reduce') {
+                    if ($record->stock < $request->quantity) {
+                        return response()->json(['success' => false, 'message' => 'Stok tidak mencukupi untuk dikurangi.']);
+                    }
+                    $newStock = max(0, $record->stock - $request->quantity);
+                }
+
+                // ✏️ Update stok utama
+                $record->update([
+                    'stock'         => $newStock,
+                    'min_stock'     => $request->min_stock ?? $record->min_stock,
+                    'rack_position' => $request->rack_position ?? $record->rack_position,
+                    'supplier_name' => $request->supplier_name ?? $record->supplier_name,
+                ]);
+
+            } else {
+                // 🆕 Jika belum ada data stok (harus add)
                 if ($request->action_type === 'reduce') {
                     return response()->json(['success' => false, 'message' => 'Tidak dapat mengurangi stok yang belum ada.']);
                 }
 
-                \App\Models\WarehouseProduct::create([
+                $record = \App\Models\WarehouseProduct::create([
                     'warehouse_id'  => $request->warehouse_id,
                     'product_id'    => $productId,
                     'variation_id'  => $variationId,
                     'stock'         => $request->quantity,
                     'min_stock'     => $request->min_stock ?? 0,
                     'rack_position' => $request->rack_position,
+                    'supplier_name' => $request->supplier_name,
                     'is_active'     => true,
                 ]);
-
-                return response()->json(['success' => true, 'message' => 'Stok baru berhasil ditambahkan ke gudang.']);
             }
 
-            // 🔁 Update stok existing
-            $newStock = $record->stock;
-            if ($request->action_type === 'add') {
-                $newStock += $request->quantity;
-            } elseif ($request->action_type === 'reduce') {
-                $newStock = max(0, $newStock - $request->quantity);
-            }
-
-            $record->update([
-                'stock'         => $newStock,
-                'min_stock'     => $request->min_stock ?? $record->min_stock,
-                'rack_position' => $request->rack_position ?? $record->rack_position,
+            // 🧾 Simpan log perubahan stok
+            DB::table('warehouse_stock_logs')->insert([
+                'warehouse_id' => $request->warehouse_id,
+                'product_id'   => $productId,
+                'variation_id' => $variationId,
+                'action_type'  => $request->action_type,
+                'quantity'     => $request->quantity,
+                'note'         => $request->supplier_name ?? '-',
+                'user_id'      => auth()->id() ?? null,
+                'created_at'   => now(),
+                'updated_at'   => now(),
             ]);
 
-            return response()->json(['success' => true, 'message' => 'Stok berhasil diperbarui.']);
+            return response()->json([
+                'success' => true,
+                'message' => 'Stok berhasil diperbarui dan dicatat dalam log.'
+            ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['success' => false, 'message' => 'Validasi gagal: ' . $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal: ' . $e->getMessage()
+            ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Terjadi kesalahan: ' . $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ]);
         }
     }
 
@@ -1560,6 +1666,26 @@ class ProductController extends Controller
                 'message' => 'Terjadi kesalahan: ' . $e->getMessage()
             ]);
         }
+    }
+
+    public function updateTransfer(Request $request, $id)
+    {
+        $transfer = WarehouseTransfer::findOrFail($id);
+        $transfer->update([
+            'from_warehouse_id' => $request->from_warehouse_id,
+            'to_warehouse_id'   => $request->to_warehouse_id,
+            'product_id'        => $request->product_id,
+            'variation_id'      => $request->variation_id,
+            'quantity'          => $request->quantity,
+        ]);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function deleteTransfer($id)
+    {
+        WarehouseTransfer::findOrFail($id)->delete();
+        return response()->json(['success' => true]);
     }
 
 }

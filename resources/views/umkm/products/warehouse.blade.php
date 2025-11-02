@@ -865,7 +865,7 @@
 
                 <div class="form-group">
                     <label for="min_stock">Stok Minimum</label>
-                    <input type="number" name="min_stock" id="min_stock" min="0" placeholder="Misal: 10">
+                    <input type="number" name="min_stock" id="min_stock" value="{{ $product->min_stock ?? 0 }}">
                 </div>
 
                 <div class="form-group">

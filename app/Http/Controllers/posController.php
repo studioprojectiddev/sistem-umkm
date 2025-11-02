@@ -39,14 +39,25 @@ class PosController extends Controller
             'products.promo_end',
             'products.thumbnail',
             'products.unit',
+            'warehouse_products.min_stock',
             // Hitung stok total dari log + transfer
             DB::raw("
                 COALESCE((
-                    SELECT 
-                        (SUM(CASE WHEN wt.status = 'received' THEN wt.quantity ELSE 0 END))
-                    FROM warehouse_transfers wt
-                    WHERE wt.product_id = products.id
-                    AND variation_id is null
+                    (
+                        SELECT 
+                            COALESCE(SUM(CASE WHEN wt.status = 'received' THEN wt.quantity ELSE 0 END), 0)
+                        FROM warehouse_transfers wt
+                        WHERE wt.product_id = products.id
+                        AND wt.variation_id IS NULL
+                    )
+                    -
+                    (
+                        SELECT 
+                            COALESCE(SUM(ti.quantity), 0)
+                        FROM transaction_items ti
+                        WHERE ti.product_id = products.id
+                        AND ti.variation_id IS NULL
+                    )
                 ), 0) AS stockProduct
             ")
         )
@@ -109,7 +120,7 @@ class PosController extends Controller
             )
             ->groupBy('product_id', 'variation_id')
             ->get();
-
+        
         // 🔹 Buat peta stok agar mudah digunakan
         $stockMap = [];
 
@@ -133,7 +144,6 @@ class PosController extends Controller
             $key = $s->product_id . '-' . ($s->variation_id ?? 0);
             $stockMap[$key]['sold'] = $s->total_sold;
         }
-
         // 🔹 Tambahkan informasi stok aktual & harga ke setiap produk
         $products->each(function ($product) use ($stockMap) {
             // Tentukan harga final (cek promo aktif)
@@ -152,7 +162,7 @@ class PosController extends Controller
             // Rumus stok aktual di toko
             $total_in = $transfer_in;
             $total_out = $reduce + $transfer_out + $sold;
-            $product->stock = max(0, $total_in);
+            $product->stock = max(0, $total_in - $sold);
 
             // Produk dengan variasi
             $product->variation_json = $product->variations->map(function ($v, $index) use ($stockMap, $product) {
@@ -165,7 +175,7 @@ class PosController extends Controller
 
                 $total_in = $transfer_in;
                 $total_out = $reduce + $transfer_out + $sold;
-                $v_stock = max(0, $total_in);
+                $v_stock = max(0, $total_in - $sold);
 
                 return [
                     "no"            => $index + 1,

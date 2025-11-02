@@ -1235,7 +1235,7 @@ class ProductController extends Controller
             ->leftJoin('warehouse_products', 'warehouse_products.product_id', '=', 'products.id')
             ->leftJoin('warehouses', 'warehouses.id', '=', 'warehouse_products.warehouse_id')
             ->select(
-                'warehouse_products.id',
+                'products.id',
                 'warehouses.name as warehouse_name',
                 'warehouses.type as warehouse_type',
                 'products.id as product_id',
@@ -1244,6 +1244,7 @@ class ProductController extends Controller
                 'products.sku',
                 'products.price',
                 'warehouse_products.warehouse_id',
+                'warehouse_products.rack_position'
             )
             ->whereNull('warehouse_products.variation_id')
             ->where(function ($q) {
@@ -1269,7 +1270,8 @@ class ProductController extends Controller
                 'products.price',
                 'product_variations.name as variation_name',
                 'warehouse_products.warehouse_id',
-                'product_variations.id as variation_id'
+                'product_variations.id as variation_id',
+                'warehouse_products.rack_position'
             )
             ->where(function ($q) {
                 $q->where('warehouses.type', 'warehouse')
@@ -1316,6 +1318,15 @@ class ProductController extends Controller
             $p->stock_in = $stockIn + $transferIn;
             $p->stock_out = $stockOut + $transferOut;
             $p->stock_current = max(0, ($p->stock_in - $p->stock_out));
+
+            $latestMinStock = DB::table('warehouse_products')
+                ->where('warehouse_id', $p->warehouse_id)
+                ->where('product_id', $p->product_id)
+                ->whereNull('variation_id')
+                ->orderByDesc('id')
+                ->value('min_stock');
+
+            $p->min_stock = $latestMinStock ?? 0;
         }
 
         foreach ($variationProducts as $v) {
@@ -1348,6 +1359,14 @@ class ProductController extends Controller
             $v->stock_in = $stockIn + $transferIn;
             $v->stock_out = $stockOut + $transferOut;
             $v->stock_current = max(0, ($v->stock_in - $v->stock_out));
+
+            $latestMinStock = DB::table('warehouse_products')
+                ->where('warehouse_id', $p->warehouse_id)
+                ->where('product_id', $p->product_id)
+                ->orderByDesc('id')
+                ->value('min_stock');
+
+            $p->min_stock = $latestMinStock ?? 0;
         }
 
         // === 5️⃣ Gabungkan dropdown produk ===
@@ -1611,54 +1630,71 @@ class ProductController extends Controller
             'quantity'          => 'required|integer|min:1',
             'variation_id'      => 'nullable|integer',
         ]);
-    
+
         DB::beginTransaction();
         try {
+            // 🔍 Ambil stok saat ini dari gudang asal
+            $currentStock = DB::table('warehouse_products')
+                ->where('warehouse_id', $validated['from_warehouse_id'])
+                ->where('product_id', $validated['product_id'])
+                ->when($validated['variation_id'], function ($q) use ($validated) {
+                    $q->where('variation_id', $validated['variation_id']);
+                }, function ($q) {
+                    $q->whereNull('variation_id');
+                })
+                ->value('stock');
+
+            $currentStock = $currentStock ?? 0;
+
+            // 🚫 Validasi stok cukup
+            if ($validated['quantity'] > $currentStock) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Stok tidak mencukupi. Gudang asal hanya memiliki {$currentStock} unit.",
+                ]);
+            }
+
+            // ✅ Simpan data transfer
             $transfer = WarehouseTransfer::create([
                 'from_warehouse_id' => $validated['from_warehouse_id'],
                 'to_warehouse_id'   => $validated['to_warehouse_id'],
                 'product_id'        => $validated['product_id'],
-                'variation_id'      => $validated['variation_id'] ?? null, // penting!
+                'variation_id'      => $validated['variation_id'] ?? null,
                 'quantity'          => $validated['quantity'],
-                'status'            => 'received',
+                'status'            => 'received', // default
             ]);
-    
-            // Kurangi stok dari gudang asal
-            if ($validated['variation_id']) {
-                // kalau ada variasi
-                DB::table('warehouse_products')
-                    ->where('warehouse_id', $validated['from_warehouse_id'])
-                    ->where('variation_id', $validated['variation_id'])
-                    ->decrement('stock', $validated['quantity']);
-            } else {
-                // kalau tidak ada variasi
-                DB::table('warehouse_products')
-                    ->where('warehouse_id', $validated['from_warehouse_id'])
-                    ->whereNull('variation_id')
-                    ->where('product_id', $validated['product_id'])
-                    ->decrement('stock', $validated['quantity']);
-            }
-    
-            // Tambahkan stok ke gudang tujuan
+
+            // 🔻 Kurangi stok dari gudang asal
+            DB::table('warehouse_products')
+                ->where('warehouse_id', $validated['from_warehouse_id'])
+                ->where('product_id', $validated['product_id'])
+                ->when($validated['variation_id'], function ($q) use ($validated) {
+                    $q->where('variation_id', $validated['variation_id']);
+                }, function ($q) {
+                    $q->whereNull('variation_id');
+                })
+                ->decrement('stock', $validated['quantity']);
+
+            // 🔺 Tambahkan stok ke gudang tujuan
             DB::table('warehouse_products')->updateOrInsert(
                 [
                     'warehouse_id' => $validated['to_warehouse_id'],
-                    'product_id' => $validated['product_id'],
+                    'product_id'   => $validated['product_id'],
                     'variation_id' => $validated['variation_id'] ?? null,
                 ],
                 [
-                    'stock' => DB::raw('stock + ' . $validated['quantity'])
+                    'stock' => DB::raw('COALESCE(stock, 0) + ' . (int) $validated['quantity'])
                 ]
             );
-    
+
             DB::commit();
-    
+
             return response()->json([
                 'success' => true,
                 'message' => 'Transfer stok berhasil disimpan',
-                'data' => $transfer
+                'data'    => $transfer
             ]);
-    
+
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([

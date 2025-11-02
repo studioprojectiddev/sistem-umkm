@@ -4,103 +4,125 @@
     <meta charset="UTF-8">
     <title>Struk Transaksi</title>
     <style>
-        /* General */
-        body {
-            font-family: 'Courier New', monospace;
-            width: 80mm; /* standar printer thermal */
-            margin: 0 auto;
-            padding: 10px;
-            color: #000;
-        }
-
-        h2, h3 {
-            text-align: center;
-            margin: 5px 0;
-        }
-
-        p, span {
+        /* Ukuran kertas thermal */
+        @page {
+            size: 80mm auto;
             margin: 0;
-            padding: 0;
+        }
+
+        body {
+            font-family: 'Arial', 'DejaVu Sans', sans-serif;
+            width: 80mm;
+            margin: 0 auto; /* ✅ Biar struk berada di tengah halaman */
+            padding: 5px;
+            font-size: 12px;
+            color: #000;
+            background: #fff;
+            text-align: center; /* ✅ Rata tengah secara default */
+        }
+
+        h2 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        img.logo {
+            display: block;
+            margin: 5px auto;
+            width: 60px;
+            height: auto;
         }
 
         hr {
-            border: none;
+            border: 0;
             border-top: 1px dashed #000;
             margin: 5px 0;
         }
 
-        /* Logo */
-        .logo {
-            display: block;
-            margin: 0 auto 5px;
-            width: 60px;
-        }
-
-        /* Table */
         table {
-            width: 100%;
+            width: 95%;
+            margin: 0 auto; /* ✅ Biar tabel tetap di tengah */
             border-collapse: collapse;
-            margin-top: 5px;
+            text-align: left; /* ✅ Supaya teks item dan harga tetap sejajar */
         }
 
         table td {
-            padding: 3px 0;
+            font-size: 12px;
+            padding: 2px 0;
+            vertical-align: top;
         }
 
         .text-right {
             text-align: right;
         }
 
-        .total {
+        .total td {
             font-weight: bold;
-            font-size: 1.1em;
+            font-size: 13px;
+            border-top: 1px dashed #000;
         }
 
         .footer {
             text-align: center;
             margin-top: 10px;
-            font-size: 0.85em;
+            font-size: 11px;
         }
 
-        /* Highlight promo or payment */
-        .payment-method {
-            font-weight: bold;
-            text-align: center;
-            margin: 5px 0;
+        /* Saat mode print */
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact !important;
+                color-adjust: exact !important;
+                margin: 0 auto;
+                padding: 0;
+            }
+
+            img {
+                filter: contrast(150%) brightness(110%);
+            }
+
+            @page {
+                size: 80mm auto;
+                margin: 0;
+            }
         }
     </style>
 </head>
-<body onload="window.print(); autoClose()">
 
+<body onload="setTimeout(() => { window.print(); autoClose(); }, 300)">
     <h2>Imanuel</h2>
     <img src="{{ asset('assets/images/icon_imanuel2.png') }}" class="logo" alt="Logo Toko">
     <hr>
 
-    <!-- Invoice Info -->
+    <!-- Informasi Transaksi -->
     <p>No. Invoice: {{ $transaction->invoice_number }}</p>
     <p>Tanggal: {{ $transaction->created_at->format('d/m/Y H:i') }}</p>
     <p>Kasir: {{ auth()->user()->name ?? 'Admin' }}</p>
     <hr>
 
-    <!-- Items -->
+    <!-- Item Transaksi -->
     <table>
         @foreach($transaction->items as $item)
         <tr>
-            <td>
+            <td style="width: 65%;">
                 {{ $item->product->name }}
                 @if($item->variation)
                     ({{ $item->variation->name }})
                 @endif
-            </td>
-            <td class="text-right">
+                <br>
                 {{ $item->quantity }} x Rp {{ number_format($item->price, 0, ',', '.') }}
+            </td>
+            <td class="text-right" style="width: 35%;">
+                Rp {{ number_format($item->quantity * $item->price, 0, ',', '.') }}
             </td>
         </tr>
         @endforeach
     </table>
+
     <hr>
 
-    <!-- Summary -->
+    <!-- Ringkasan -->
     <table>
         <tr>
             <td>Subtotal</td>
@@ -119,26 +141,27 @@
             <td class="text-right">Rp {{ number_format($transaction->total, 0, ',', '.') }}</td>
         </tr>
         <tr>
-            <td>Bayar</td>
+            <td>Metode</td>
             <td class="text-right">{{ ucfirst($transaction->payment_method ?? 'Cash') }}</td>
         </tr>
     </table>
+
     <hr>
 
     <!-- Footer -->
     <div class="footer">
         <p>Terima kasih atas kunjungan Anda!</p>
-        <p>Follow & Support: {{ $storeContact ?? '-' }}</p>
+        <p>Follow & Support: {{ $storeContact ?? '085960296108' }}</p>
+        <p>~ {{ config('app.name', 'StudioProjectID POS') }} ~</p>
     </div>
 
     <script>
         function autoClose() {
-            // Tunggu 5 detik (5000ms), lalu tutup jendela/tab
+            // Tutup tab otomatis setelah 5 detik
             setTimeout(() => {
                 window.close();
             }, 5000);
         }
     </script>
-
 </body>
 </html>

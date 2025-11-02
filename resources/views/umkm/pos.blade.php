@@ -896,11 +896,11 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
                                             {{ $p->variations->count() }} variasi
                                         @endif
                                     </td>
-                                    <td>{{ $p->stock }}</td>
+                                    <td>{{ $p->stockProduct }}</td>
                                     <td>{{ $p->total_sold ?? 0 }}</td>
                                     <td>{{ $p->min_stock ?? 0 }}</td>
                                     <td>
-                                        @if($p->stock <= ($p->min_stock ?? 5))
+                                        @if($p->stockProduct <= ($p->min_stock ?? 5))
                                             <span class="badge badge-danger">⚠️ Hampir Habis</span>
                                         @else
                                             <span class="badge badge-success">✔️ Aman</span>

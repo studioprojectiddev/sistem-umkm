@@ -11,6 +11,23 @@
     overflow-x: auto;
 }
 
+.pos-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.pos-outlet {
+    min-width: 260px;
+}
+
+.pos-outlet label {
+    font-size: 13px;
+    color: #555;
+}
+
 .custom-table {
     width: 100%;
     border-collapse: collapse;
@@ -653,12 +670,29 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 </style>
 
 
-<h1 class="title">Point Of Sales</h1>
-<ul class="breadcrumbs">
-    <li><a href="{{ route('dashboard') }}">Home</a></li>
-    <li class="divider">/</li>
-    <li><a href="{{ route('umkm.pos.index') }}" class="active">POS</a></li>
-</ul>
+<div class="pos-header">
+    <div>
+        <h1 class="title">Point Of Sales</h1>
+        <ul class="breadcrumbs">
+            <li><a href="{{ route('dashboard') }}">Home</a></li>
+            <li class="divider">/</li>
+            <li><a href="{{ route('umkm.pos.index') }}" class="active">POS</a></li>
+        </ul>
+    </div>
+
+    <div class="pos-outlet">
+        <label class="mb-1"><strong>Outlet Aktif : </strong></label>
+        <select id="selectOutlet" class="form-control">
+            <option value="">-- Pilih Outlet --</option>
+            @foreach($stores as $store)
+                <option value="{{ $store->id }}"
+                    {{ session('active_warehouse_id') == $store->id ? 'selected' : '' }}>
+                    {{ $store->name }}
+                </option>
+            @endforeach
+        </select>
+    </div>
+</div>
 
 <div class="info-data">
     <div class="card">
@@ -1201,6 +1235,18 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+@if(session('need_outlet'))
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        Swal.fire({
+            title: 'Pilih Outlet',
+            text: 'Silakan pilih outlet terlebih dahulu sebelum menggunakan POS',
+            icon: 'info'
+        });
+    });
+</script>
+@endif
+
 <script>
 function refreshCart(cart) {
     let $tbody = $("#cartTable tbody");
@@ -1228,7 +1274,16 @@ $(document).on('click', '.btn-add-cart', function(e){
     let $btn = $(this);
     let productId = $btn.data('id');
     let hasVariation = $btn.data('has-variation') == 1;
-    let variations = $btn.data('variations') || [];
+    let variationsRaw = decodeURIComponent($btn.attr('data-variations') || '[]');
+    let variations = [];
+
+    try {
+        variations = JSON.parse(variationsRaw);
+    } catch (e) {
+        console.error('Variations JSON error:', variationsRaw);
+        return;
+    }
+
     let productPrice = $btn.data('price') || 0;
 
     if (hasVariation) {
@@ -1253,7 +1308,11 @@ $(document).on('click', '.btn-add-cart', function(e){
                 .map(opt => opt.value)
                 .join(' / ');
             let weightText = v.weight ? ` [ ${parseFloat(v.weight).toLocaleString()} gr ]` : '';
-            let label = optionLabels || v.name || '';
+            let label = optionLabels 
+            || v.name 
+            || (v.attributes ? Object.values(v.attributes).join(' / ') : '') 
+            || 'Varian';
+
 
             html += `
                 <option value="variation_${v.variation_id}">
@@ -1776,31 +1835,41 @@ document.addEventListener('DOMContentLoaded', () => {
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     function loadStockSummary() {
-        fetch('/stock/summary')
-            .then(res => res.json())
-            .then(data => {
-                document.getElementById('totalProduk').textContent = data.totalProduk;
-                document.getElementById('totalStok').textContent   = data.totalStok;
-                document.getElementById('totalTransaksi').textContent = data.totalTransaksi;
-            })
-            .catch(err => console.error('Gagal memuat ringkasan stok', err));
+        fetch('/stock/summary', {
+            method: 'GET',
+            credentials: 'same-origin', // ⬅️ PENTING untuk auth
+            headers: {
+                'Accept': 'application/json' // ⬅️ PENTING agar Laravel kirim JSON
+            }
+        })
+        .then(res => {
+            if (!res.ok) {
+                throw new Error('HTTP error ' + res.status);
+            }
+            return res.json();
+        })
+        .then(data => {
+            document.getElementById('totalProduk').textContent = data.totalProduk;
+            document.getElementById('totalStok').textContent   = data.totalStok;
+            document.getElementById('totalTransaksi').textContent = data.totalTransaksi;
+        })
+        .catch(err => console.error('Gagal memuat ringkasan stok', err));
     }
 
-    // Panggil saat halaman pertama kali dibuka
     loadStockSummary();
-
-    // Optional: auto-refresh setiap 30 detik
     setInterval(loadStockSummary, 30000);
 });
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    const tableBody = document.getElementById('laporanProdukBody'); // tbody untuk tabel
-    const paginationContainer = document.getElementById('laporanProdukPagination');
-    const infoContainer = document.getElementById('laporanProdukInfo');
-    const perPage = 10;
+
+    const tableBody = document.getElementById('laporanProdukBody');
+    const pagination = document.getElementById('laporanProdukPagination');
+    const infoBox = document.getElementById('laporanProdukInfo');
+
+    const PER_PAGE = 10;
     let reportData = [];
-    let currentPage = 1;
+    let laporanPage = 1;
     let totalPages = 1;
 
     async function loadProductReport() {
@@ -1811,45 +1880,30 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch(`/api/report/products?start=${start}&end=${end}`);
             const data = await res.json();
 
-            // Update ringkasan
+            // ringkasan
             document.getElementById('bestProduct').textContent = data.bestProduct;
             document.getElementById('totalSales').textContent = data.totalSales;
             document.getElementById('totalStockMovement').textContent = data.totalStockMovement;
 
-            reportData = data.details;
-            totalPages = Math.ceil(reportData.length / perPage);
-            renderPage(1);
-            renderPagination();
+            reportData = data.details || [];
+            totalPages = Math.ceil(reportData.length / PER_PAGE) || 1;
 
-            // Chart
-            const ctx = document.getElementById('chartPenjualan').getContext('2d');
-            if(window.salesChart) window.salesChart.destroy();
-            window.salesChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: data.chart.map(c => c.tanggal),
-                    datasets: [{
-                        label: 'Jumlah Terjual',
-                        data: data.chart.map(c => c.total),
-                        borderColor: '#4caf50',
-                        fill: false
-                    }]
-                }
-            });
-
-        } catch (error) {
-            console.error('Gagal load laporan produk', error);
+            laporanPage = 1;
+            renderPage(laporanPage);
+        } catch (err) {
+            console.error('Gagal load laporan produk', err);
         }
     }
 
     function renderPage(page) {
-        currentPage = page;
-        const start = (page - 1) * perPage;
-        const end = start + perPage;
-        const pageData = reportData.slice(start, end);
+        laporanPage = page;
+
+        const start = (page - 1) * PER_PAGE;
+        const end   = Math.min(start + PER_PAGE, reportData.length);
 
         tableBody.innerHTML = '';
-        pageData.forEach(d => {
+
+        reportData.slice(start, end).forEach(d => {
             tableBody.innerHTML += `
                 <tr>
                     <td>${d.type}</td>
@@ -1865,31 +1919,49 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         });
 
-        // Update info footer
-        const startItem = reportData.length ? start + 1 : 0;
-        const endItem = Math.min(end, reportData.length);
-        infoContainer.textContent = `Menampilkan ${startItem}–${endItem} dari ${reportData.length} data`;
+        // info bawah
+        infoBox.textContent =
+            `Menampilkan ${start + 1}–${end} dari ${reportData.length} data`;
+
+        renderPagination();
     }
 
     function renderPagination() {
-        paginationContainer.innerHTML = '';
-        if(totalPages <= 1) return;
+        pagination.innerHTML = '';
 
-        for(let i = 1; i <= totalPages; i++) {
-            const btn = document.createElement('button');
-            btn.textContent = i;
-            btn.classList.add('page-btn');
-            if(i === currentPage) btn.classList.add('active');
-            btn.addEventListener('click', () => renderPage(i));
-            paginationContainer.appendChild(btn);
-        }
+        if (totalPages <= 1) return;
+
+        // ⬅ Prev
+        const prev = document.createElement('button');
+        prev.textContent = '« Prev';
+        prev.className = 'btn btn-sm btn-pagination-nav';
+        prev.disabled = laporanPage === 1;
+        prev.onclick = () => renderPage(laporanPage - 1);
+        pagination.appendChild(prev);
+
+        // info halaman
+        const pageInfo = document.createElement('span');
+        pageInfo.style.margin = '0 12px';
+        pageInfo.textContent = `Halaman ${laporanPage} / ${totalPages}`;
+        pagination.appendChild(pageInfo);
+
+        // Next ➡
+        const next = document.createElement('button');
+        next.textContent = 'Next »';
+        next.className = 'btn btn-sm btn-pagination-nav';
+        next.disabled = laporanPage === totalPages;
+        next.onclick = () => renderPage(laporanPage + 1);
+        pagination.appendChild(next);
     }
 
+    // tombol filter
     document.getElementById('btnFilter').addEventListener('click', loadProductReport);
+
     loadProductReport();
 });
 </script>
-<script>
+
+<!-- <script>
 document.addEventListener('DOMContentLoaded', function() {
     const rowsPerPage = 10; // tampil 10 data per halaman
     const tableBody   = document.getElementById('stockTableBody');
@@ -1932,6 +2004,67 @@ document.addEventListener('DOMContentLoaded', function() {
         // Jika data <= 10, tetap tampilkan info total
         infoBox.textContent = `Menampilkan 1–${totalRows} dari ${totalRows} data`;
     }
+});
+</script> -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    const tbody = document.getElementById('stockTableBody');
+    const rows  = Array.from(tbody.querySelectorAll('tr'));
+
+    const pagination = document.getElementById('tablePagination');
+    const infoBox    = document.getElementById('tableInfo');
+
+    const PER_PAGE = 10;
+    let stockPage = 1;
+    const totalRows = rows.length;
+    const totalPages = Math.ceil(totalRows / PER_PAGE);
+
+    if (!tbody || totalRows === 0) return;
+
+    function renderStockPage(page) {
+        stockPage = page;
+
+        const start = (page - 1) * PER_PAGE;
+        const end   = Math.min(start + PER_PAGE, totalRows);
+
+        rows.forEach((row, i) => {
+            row.style.display = (i >= start && i < end) ? '' : 'none';
+        });
+
+        infoBox.textContent =
+            `Menampilkan ${start + 1}–${end} dari ${totalRows} data`;
+
+        renderPagination();
+    }
+
+    function renderPagination() {
+        pagination.innerHTML = '';
+
+        // ⬅ Prev
+        const prev = document.createElement('button');
+        prev.textContent = '« Prev';
+        prev.className = 'btn btn-sm btn-pagination-nav';
+        prev.disabled = stockPage === 1;
+        prev.onclick = () => renderStockPage(stockPage - 1);
+        pagination.appendChild(prev);
+
+        // Page info
+        const pageInfo = document.createElement('span');
+        pageInfo.style.margin = '0 10px';
+        pageInfo.textContent = `Halaman ${stockPage} / ${totalPages}`;
+        pagination.appendChild(pageInfo);
+
+        // Next ➡
+        const next = document.createElement('button');
+        next.textContent = 'Next »';
+        next.className = 'btn btn-sm btn-pagination-nav';
+        next.disabled = stockPage === totalPages;
+        next.onclick = () => renderStockPage(stockPage + 1);
+        pagination.appendChild(next);
+    }
+
+    renderStockPage(1);
 });
 </script>
 <script>
@@ -2032,7 +2165,7 @@ document.addEventListener('DOMContentLoaded', function(){
                         data-price="${product.price}"
                         data-final-price="${product.final_price ?? product.price}"
                         data-has-variation="${product.variations && product.variations.length > 0 ? 1 : 0}"
-                        data-variations='${JSON.stringify(product.variations)}'>
+                        data-variations="${encodeURIComponent(JSON.stringify(product.variations))}">
                         + Keranjang
                     </button>
                 </td>
@@ -2058,13 +2191,49 @@ function formatDate(dateStr) {
 }
 
 
-    function renderPagination(totalPages) {
-        const container = $("#tablePaginationProduct");
-        container.empty();
-        for(let i = 1; i <= totalPages; i++){
-            container.append(`<button class="btn btn-sm btn-pagination ${i === currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`);
-        }
+function renderPagination(totalPages) {
+    const container = $("#tablePaginationProduct");
+    container.empty();
+
+    if (totalPages <= 1) return;
+
+    const maxVisible = 5; // maksimal tombol angka
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let endPage   = startPage + maxVisible - 1;
+
+    if (endPage > totalPages) {
+        endPage = totalPages;
+        startPage = Math.max(1, endPage - maxVisible + 1);
     }
+
+    // ⬅ Prev
+    container.append(`
+        <button class="btn btn-sm btn-pagination-nav"
+            ${currentPage === 1 ? 'disabled' : ''}
+            data-page="${currentPage - 1}">
+            &laquo; Prev
+        </button>
+    `);
+
+    // Angka halaman
+    for (let i = startPage; i <= endPage; i++) {
+        container.append(`
+            <button class="btn btn-sm btn-pagination ${i === currentPage ? 'active' : ''}"
+                data-page="${i}">
+                ${i}
+            </button>
+        `);
+    }
+
+    // Next ➡
+    container.append(`
+        <button class="btn btn-sm btn-pagination-nav"
+            ${currentPage === totalPages ? 'disabled' : ''}
+            data-page="${currentPage + 1}">
+            Next &raquo;
+        </button>
+    `);
+}
 
     function renderTableInfo(startIndex, countOnPage, total) {
         const info = `Menampilkan ${startIndex + 1}-${startIndex + countOnPage} dari ${total} data`;
@@ -2072,10 +2241,16 @@ function formatDate(dateStr) {
     }
 
     // Pagination click
-    $(document).on('click', '.btn-pagination', function() {
-        currentPage = parseInt($(this).data('page'));
-        renderTable(currentPage);
+    $(document).on('click', '.btn-pagination, .btn-pagination-nav', function () {
+        const page = parseInt($(this).data('page'));
+        const totalPages = Math.ceil(filteredProducts.length / perPage);
+
+        if (page >= 1 && page <= totalPages) {
+            currentPage = page;
+            renderTable(currentPage);
+        }
     });
+
 
     // Filter pencarian
     $("#productSearch").on('keyup', function() {
@@ -2087,6 +2262,20 @@ function formatDate(dateStr) {
 
     // Init
     renderTable();
+
+    $('#selectOutlet').on('change', function(){
+        const warehouseId = $(this).val();
+
+        if(!warehouseId) return;
+
+        $.post('/umkm/pos/set-outlet', {
+            _token: "{{ csrf_token() }}",
+            warehouse_id: warehouseId
+        }, function(){
+            location.reload();
+        });
+    });
+
 </script>
 
 @endsection

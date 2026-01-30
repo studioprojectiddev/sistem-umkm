@@ -1,3 +1,35 @@
+<style>
+    .nav-mode {
+        background: #2563eb;
+        color: #fff !important;
+        border-radius: 999px;
+        padding: 8px 16px;
+
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        margin-right: 24px; /* ⬅️ JARAK KE PROFILE */
+
+        transition: all .2s ease;
+    }
+
+    .nav-mode i {
+        font-size: 18px;
+    }
+
+    .nav-mode-text {
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .nav-mode:hover {
+        background: #1d4ed8;
+        transform: translateY(-1px);
+    }
+
+</style>
 <nav>
     <i class='bx bx-menu toggle-sidebar' ></i>
     <form action="#">
@@ -6,9 +38,11 @@
             <i class='bx bx-search icon' ></i>
         </div>
     </form>
-    <a href="#" class="nav-link">
-        <i class='bx bxs-bell icon' ></i>
-        <span class="badge">5</span>
+    <a href="{{ route('umkm.kasir.index') }}"
+        class="nav-link nav-mode"
+        title="Mode Kasir (Tablet)">
+        <i class='bx bx-store'></i>
+        <span class="nav-mode-text">My Store</span>
     </a>
     <span class="divider"></span>
     <div class="profile">

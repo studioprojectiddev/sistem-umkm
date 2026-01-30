@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\Product;
@@ -22,203 +23,136 @@ class PosController extends Controller
      */
     public function index()
     {
-        $products = Product::with([
-            'category',
-            'variations.options.attribute'
-        ])
-        ->select(
-            'products.id',
-            'products.name',
-            'products.sku',
-            'products.price',
-            'products.cost_price',
-            'products.discount_price',
-            'products.is_promo',
-            'products.promo_price',
-            'products.promo_start',
-            'products.promo_end',
-            'products.thumbnail',
-            'products.unit',
-            'warehouse_products.min_stock',
-            // Hitung stok total dari log + transfer
-            DB::raw("
-                COALESCE((
-                    (
-                        SELECT 
-                            COALESCE(SUM(CASE WHEN wt.status = 'received' THEN wt.quantity ELSE 0 END), 0)
-                        FROM warehouse_transfers wt
-                        WHERE wt.product_id = products.id
-                        AND wt.variation_id IS NULL
-                    )
-                    -
-                    (
-                        SELECT 
-                            COALESCE(SUM(ti.quantity), 0)
-                        FROM transaction_items ti
-                        WHERE ti.product_id = products.id
-                        AND ti.variation_id IS NULL
-                    )
-                ), 0) AS stockProduct
-            ")
-        )
-        ->leftJoin('warehouse_products', 'warehouse_products.product_id', '=', 'products.id')
-        ->leftJoin('warehouses', 'warehouses.id', '=', 'warehouse_products.warehouse_id')
-        ->whereNull('warehouse_products.variation_id')
-        ->where(function ($q) {
-            $q->where('warehouses.type', 'warehouse')
-              ->orWhereNull('warehouses.type');
-        })
-        ->distinct()
-        ->get();
+        // 🔹 Ambil outlet aktif
+        $warehouseId = session('active_warehouse_id');
 
-        // 🔹 Ambil semua gudang bertipe store
-        $storeWarehouses = DB::table('warehouses')->where('type', 'store')->pluck('id');
-
-        // 🔹 Ambil total stok dari warehouse_stock_logs (add & reduce) untuk store
-        $warehouseLogs = DB::table('warehouse_stock_logs')
-            ->whereIn('warehouse_id', $storeWarehouses)
-            ->select(
-                'product_id',
-                'variation_id',
-                DB::raw('SUM(CASE WHEN action_type = "add" THEN quantity ELSE 0 END) as total_add'),
-                DB::raw('SUM(CASE WHEN action_type = "reduce" THEN quantity ELSE 0 END) as total_reduce')
-            )
-            ->groupBy('product_id', 'variation_id')
-            ->get();
-
-        // 🔹 Ambil transfer masuk ke store (barang diterima)
-        $transferIn = DB::table('warehouse_transfers')
-        ->whereIn('to_warehouse_id', $storeWarehouses)
-        ->where('status', 'received')
-        ->whereNotNull('variation_id')
-        ->select(
-            'product_id',
-            'variation_id',
-            DB::raw('SUM(quantity) as total_in')
-        )
-        ->groupBy('product_id', 'variation_id')
-        ->get();
-
-        // 🔹 Ambil transfer keluar dari store (barang dikirim)
-        $transferOut = DB::table('warehouse_transfers')
-            ->whereIn('from_warehouse_id', $storeWarehouses)
-            ->whereIn('status', ['sent', 'received'])
-            ->select(
-                'product_id',
-                'variation_id',
-                DB::raw('SUM(quantity) as total_out')
-            )
-            ->groupBy('product_id', 'variation_id')
-            ->get();
-
-        // 🔹 Ambil total barang yang terjual dari transaksi
-        $sales = DB::table('transaction_items')
-            ->select(
-                'product_id',
-                'variation_id',
-                DB::raw('SUM(quantity) as total_sold')
-            )
-            ->groupBy('product_id', 'variation_id')
-            ->get();
-        
-        // 🔹 Buat peta stok agar mudah digunakan
-        $stockMap = [];
-
-        foreach ($warehouseLogs as $log) {
-            $key = $log->product_id . '-' . ($log->variation_id ?? 0);
-            $stockMap[$key]['add'] = $log->total_add;
-            $stockMap[$key]['reduce'] = $log->total_reduce;
+        // 🔹 Flag untuk view (popup pilih outlet)
+        $needOutlet = false;
+        if (!$warehouseId) {
+            $needOutlet = true;
         }
 
-        foreach ($transferIn as $t) {
-            $key = $t->product_id . '-' . ($t->variation_id ?? 0);
-            $stockMap[$key]['transfer_in'] = $t->total_in;
-        }
+        /**
+         * ======================================================
+         * CART (WAJIB PER OUTLET)
+         * ======================================================
+         */
+        $cart = $warehouseId
+            ? session()->get("cart.$warehouseId", [])
+            : [];
 
-        foreach ($transferOut as $t) {
-            $key = $t->product_id . '-' . ($t->variation_id ?? 0);
-            $stockMap[$key]['transfer_out'] = $t->total_out;
-        }
+        /**
+         * ======================================================
+         * PRODUK & VARIASI (HANYA JIKA OUTLET DIPILIH)
+         * ======================================================
+         */
+        $products = collect();
+        $productsForJs = [];
 
-        foreach ($sales as $s) {
-            $key = $s->product_id . '-' . ($s->variation_id ?? 0);
-            $stockMap[$key]['sold'] = $s->total_sold;
-        }
-        // 🔹 Tambahkan informasi stok aktual & harga ke setiap produk
-        $products->each(function ($product) use ($stockMap) {
-            // Tentukan harga final (cek promo aktif)
-            $product->final_price = ($product->is_promo && $product->promo_start <= now() && $product->promo_end >= now())
-                ? $product->promo_price
-                : $product->price;
+        if ($warehouseId) {
 
-            // Produk tanpa variasi
-            $key = $product->id . '-0';
-            $add = $stockMap[$key]['add'] ?? 0;
-            $reduce = $stockMap[$key]['reduce'] ?? 0;
-            $transfer_in = $stockMap[$key]['transfer_in'] ?? 0;
-            $transfer_out = $stockMap[$key]['transfer_out'] ?? 0;
-            $sold = $stockMap[$key]['sold'] ?? 0;
+            $products = Product::with([
+                    'category',
+                    'variations.options.attribute'
+                ])
+                ->leftJoin('warehouse_products as wp', function ($q) use ($warehouseId) {
+                    $q->on('wp.product_id', '=', 'products.id')
+                    ->where('wp.warehouse_id', $warehouseId)
+                    ->whereNull('wp.variation_id');
+                })
+                ->select(
+                    'products.*',
+                    DB::raw('COALESCE(wp.stock, 0) as stockProduct'),
+                    'wp.min_stock'
+                )
+                ->distinct()
+                ->get();
 
-            // Rumus stok aktual di toko
-            $total_in = $transfer_in;
-            $total_out = $reduce + $transfer_out + $sold;
-            $product->stock = max(0, $total_in - $sold);
+            // 🔹 Inject harga final & stok variasi per outlet
+            $products->each(function ($product) use ($warehouseId) {
 
-            // Produk dengan variasi
-            $product->variation_json = $product->variations->map(function ($v, $index) use ($stockMap, $product) {
-                $key = $product->id . '-' . $v->id;
-                $add = $stockMap[$key]['add'] ?? 0;
-                $reduce = $stockMap[$key]['reduce'] ?? 0;
-                $transfer_in = $stockMap[$key]['transfer_in'] ?? 0;
-                $transfer_out = $stockMap[$key]['transfer_out'] ?? 0;
-                $sold = $stockMap[$key]['sold'] ?? 0;
+                // Harga final (promo aware)
+                $product->final_price =
+                    ($product->is_promo &&
+                    $product->promo_start <= now() &&
+                    $product->promo_end >= now())
+                    ? $product->promo_price
+                    : $product->price;
 
-                $total_in = $transfer_in;
-                $total_out = $reduce + $transfer_out + $sold;
-                $v_stock = max(0, $total_in - $sold);
+                // Variasi + stok outlet
+                $product->variation_json = $product->variations->map(function ($v, $i) use ($warehouseId, $product) {
 
+                    $stock = DB::table('warehouse_products')
+                        ->where('warehouse_id', $warehouseId)
+                        ->where('product_id', $product->id)
+                        ->where('variation_id', $v->id)
+                        ->value('stock') ?? 0;
+
+                    return [
+                        'no'           => $i + 1,
+                        'variation_id' => $v->id,
+                        'name'         => $v->name,
+                        'price'        => $v->price,
+                        'stock'        => $stock,
+                        'weight'       => $v->weight ?? 0,
+                        'options'      => $v->options->map(fn ($o) => [
+                            'attribute' => $o->attribute->name,
+                            'value'     => $o->value,
+                        ])->toArray(),
+                    ];
+                })->toArray();
+            });
+
+            // 🔹 Data untuk JS POS
+            $productsForJs = $products->map(function ($p) {
                 return [
-                    "no"            => $index + 1,
-                    "variation_id"  => $v->id,
-                    "name"          => $v->name,
-                    "price"         => $v->price,
-                    "stock"         => $v_stock,
-                    "sold"          => $sold,
-                    "weight"        => $v->weight ?? 0,
-                    "options"       => $v->options->map(function ($opt) {
-                        return [
-                            "attribute" => $opt->attribute->name,
-                            "value"     => $opt->value,
-                        ];
-                    })->toArray()
+                    'id'           => $p->id,
+                    'name'         => $p->name,
+                    'thumbnail'    => $p->thumbnail,
+                    'category'     => $p->category->name ?? '-',
+                    'sku'          => $p->sku ?? '-',
+                    'price'        => $p->price,
+                    'final_price'  => $p->final_price,
+                    'stockProduct' => $p->stockProduct ?? 0,
+                    'unit'         => $p->unit ?? 'pcs',
+                    'variations'   => $p->variation_json,
                 ];
             })->toArray();
+        }
 
-            // Total terjual semua variasi + non variasi
-            $product->total_sold = ($stockMap[$key]['sold'] ?? 0)
-                + collect($product->variation_json)->sum('sold');
-        });
+        /**
+         * ======================================================
+         * LIST OUTLET (STORE)
+         * ======================================================
+         */
+        $stores = Warehouse::where('type', 'store')
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
 
-        // 🔹 Data dikirim ke JavaScript
-        $productsForJs = $products->map(function ($product) {
-            return [
-                'id' => $product->id,
-                'name' => $product->name,
-                'thumbnail' => $product->thumbnail,
-                'category' => $product->category->name ?? '-',
-                'sku' => $product->sku ?? $product->barcode ?? '-',
-                'price' => $product->price,
-                'final_price' => $product->final_price,
-                'stock' => $product->stock,
-                'unit' => $product->unit ?? 'pcs',
-                'variations' => $product->variation_json,
-                'stockProduct'  => $product->stockProduct ?? $product->stock ?? 0,
-            ];
-        })->toArray();
+        /**
+         * ======================================================
+         * RETURN VIEW
+         * ======================================================
+         */
+        return view('umkm.pos', compact(
+            'products',
+            'productsForJs',
+            'cart',
+            'needOutlet',
+            'stores'
+        ));
+    }
 
-        $cart = session()->get('cart', []);
+    public function setOutlet(Request $request)
+    {
+        $warehouse = Warehouse::where('id', $request->warehouse_id)
+            ->where('type', 'store')
+            ->firstOrFail();
 
-        return view('umkm.pos', compact('products', 'cart', 'productsForJs'));
+        session(['active_warehouse_id' => $warehouse->id]);
+
+        return response()->json(['status' => 'success']);
     }
 
     /**
@@ -226,8 +160,13 @@ class PosController extends Controller
      */
     public function getCart()
     {
-        $cart = session()->get('cart', []);
-        return response()->json(['status' => 'success', 'cart' => $cart]);
+        $warehouseId = session('active_warehouse_id');
+        $cart = session()->get("cart.$warehouseId", []);
+
+        return response()->json([
+            'status' => 'success',
+            'cart'   => $cart
+        ]);
     }
 
     /**
@@ -235,63 +174,75 @@ class PosController extends Controller
      */
     public function addToCart(Request $request, $id)
     {
-        $product = Product::findOrFail($id);
-        $cart = session()->get('cart', []);
+        $warehouseId = session('active_warehouse_id');
 
-        $qty = max(1, (int) $request->qty); // pastikan qty minimal 1
-
-        // 🔹 Hitung stok produk dari warehouse_transfers yang dikirim ke toko
-        $availableStock = DB::table('warehouse_transfers')
-            ->join('warehouses', 'warehouses.id', '=', 'warehouse_transfers.to_warehouse_id')
-            ->where('warehouses.type', 'store')
-            ->where('warehouse_transfers.product_id', $id)
-            ->whereNull('warehouse_transfers.variation_id')
-            ->where('warehouse_transfers.status', 'received')
-            ->sum('warehouse_transfers.quantity');
-
-        // 🔹 Kurangi dengan total yang sudah ada di keranjang
-        $cartQty = collect($cart)
-            ->where('type', 'product')
-            ->where('id', $id)
-            ->sum('quantity');
-
-        if ($availableStock - $cartQty < $qty) {
+        if (!$warehouseId) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Stok di toko tidak mencukupi! (tersisa: ' . ($availableStock - $cartQty) . ')'
+                'message' => 'Outlet belum dipilih'
             ]);
         }
 
-        // 🔹 Tentukan harga promo bila berlaku
-        $today = now();
-        $price = $product->price;
-        if ($product->is_promo && $product->promo_price && $product->promo_start <= $today && $product->promo_end >= $today) {
-            $price = $product->promo_price;
+        $product = Product::findOrFail($id);
+        $cart = session()->get("cart.$warehouseId", []);
+
+        $qty = max(1, (int) ($request->qty ?? $request->quantity ?? 1));
+
+        $stock = DB::table('warehouse_products')
+            ->where('warehouse_id', $warehouseId)
+            ->where('product_id', $product->id)
+            ->whereNull('variation_id')
+            ->value('stock') ?? 0;
+
+        $cartQty = collect($cart)
+            ->where('type', 'product')
+            ->where('id', $product->id)
+            ->sum('quantity');
+
+        $available = $stock - $cartQty;
+
+        if ($available < $qty) {
+            return response()->json([
+                'status' => 'error',
+                'message' => "Stok outlet tidak mencukupi! (tersisa: {$available})"
+            ]);
         }
 
-        // 🔹 Tambahkan ke keranjang
+        $today = now();
+        $price = (
+            $product->is_promo &&
+            $product->promo_price &&
+            $product->promo_start <= $today &&
+            $product->promo_end >= $today
+        ) ? $product->promo_price : $product->price;
+
         $key = 'product_' . $product->id;
+
         if (isset($cart[$key])) {
             $cart[$key]['quantity'] += $qty;
         } else {
             $cart[$key] = [
-                "id"        => $product->id,
-                "type"      => "product",
-                "name"      => ($product->sku ?? $product->id) . ' / ' . $product->name,
-                "variation" => null,
-                "quantity"  => $qty,
-                "price"     => $price,
-                "thumbnail" => $product->thumbnail,
-                "discount"  => 0,
-                "subtotal"  => $price * $qty,
-                "unit"      => $product->unit ?? 'pcs'
+                'id'        => $product->id,
+                'type'      => 'product',
+                'name'      => ($product->sku ?? '-') . ' / ' . $product->name,
+                'variation' => null,
+                'quantity'  => $qty,
+                'price'     => $price,
+                'discount'  => 0,
+                'subtotal'  => 0,
+                'unit'      => $product->unit ?? 'pcs',
             ];
         }
 
-        $cart[$key]['subtotal'] = ($cart[$key]['price'] * $cart[$key]['quantity']) - $cart[$key]['discount'];
-        session()->put('cart', $cart);
+        $cart[$key]['subtotal'] =
+            ($cart[$key]['price'] * $cart[$key]['quantity']) - ($cart[$key]['discount'] ?? 0);
 
-        return response()->json(['status' => 'success', 'cart' => $cart]);
+        session()->put("cart.$warehouseId", $cart);
+
+        return response()->json([
+            'status' => 'success',
+            'cart'   => $cart
+        ]);
     }
 
     /**
@@ -299,19 +250,22 @@ class PosController extends Controller
      */
     public function updateCart(Request $request, $id)
     {
-        $request->validate([
-            'quantity' => 'nullable|integer|min:1',
-            'discount' => 'nullable|numeric|min:0'
-        ]);
+        $warehouseId = session('active_warehouse_id');
+        $cart = session()->get("cart.$warehouseId", []);
 
-        $cart = session()->get('cart', []);
-
-        if (isset($cart[$id])) {
-            $cart[$id]['quantity'] = $request->quantity ?? $cart[$id]['quantity'];
-            $cart[$id]['discount'] = $request->discount ?? $cart[$id]['discount'];
-            $cart[$id]['subtotal'] = ($cart[$id]['price'] * $cart[$id]['quantity']) - $cart[$id]['discount'];
-            session()->put('cart', $cart);
+        if (!isset($cart[$id])) {
+            return response()->json(['status' => 'error']);
         }
+
+        $qty = max(1, (int) $request->quantity);
+        $discount = max(0, (int) ($request->discount ?? 0));
+
+        $cart[$id]['quantity'] = $qty;
+        $cart[$id]['discount'] = $discount;
+        $cart[$id]['subtotal'] =
+            ($cart[$id]['price'] * $qty) - $discount;
+
+        session()->put("cart.$warehouseId", $cart);
 
         return response()->json(['status' => 'success', 'cart' => $cart]);
     }
@@ -321,11 +275,13 @@ class PosController extends Controller
      */
     public function removeFromCart($id)
     {
-        $cart = session()->get('cart', []);
-        if (isset($cart[$id])) {
-            unset($cart[$id]);
-            session()->put('cart', $cart);
-        }
+        $warehouseId = session('active_warehouse_id');
+        $cart = session()->get("cart.$warehouseId", []);
+
+        unset($cart[$id]);
+
+        session()->put("cart.$warehouseId", $cart);
+
         return response()->json(['status' => 'success', 'cart' => $cart]);
     }
 
@@ -334,8 +290,13 @@ class PosController extends Controller
      */
     public function clearCart()
     {
-        session()->forget('cart');
-        return response()->json(['status' => 'success', 'cart' => []]);
+        $warehouseId = session('active_warehouse_id');
+        session()->forget("cart.$warehouseId");
+
+        return response()->json([
+            'status' => 'success',
+            'cart' => []
+        ]);
     }
 
     /**
@@ -343,151 +304,117 @@ class PosController extends Controller
      */
     public function checkout(Request $request)
     {
-        $request->validate([
-            'payment_method' => 'nullable|string|in:cash,transfer,qris,ewallet',
-            'uang_diterima'  => 'nullable|numeric|min:0',
-            'customer_name'  => 'nullable|string|max:255',
-            'due_date'       => 'nullable|date'
-        ]);
+        $warehouseId = session('active_warehouse_id');
 
-        $cart = session()->get('cart', []);
+        if (!$warehouseId) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Outlet belum dipilih'
+            ]);
+        }
+
+        $cart = session()->get("cart.$warehouseId", []);
+
         if (empty($cart)) {
-            return response()->json(['status' => 'error', 'message' => 'Cart masih kosong!']);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Cart masih kosong!'
+            ]);
         }
 
         DB::beginTransaction();
         try {
             $subtotal = collect($cart)->sum('subtotal');
-            $discount = 0;
-            $tax = 0;
-            $shipping_cost = 0;
-            $total = $subtotal - $discount + $tax + $shipping_cost;
+            $total = $subtotal;
 
-            $uangDiterima = $request->input('uang_diterima', 0);
+            $uangDiterima = (int) $request->uang_diterima;
             $kembalian = max(0, $uangDiterima - $total);
-
-            // Cek apakah pembayaran kurang (utang)
             $isUtang = $uangDiterima < $total;
 
-            // Simpan transaksi utama
+            // ✅ TRANSAKSI DENGAN OUTLET
             $transaction = Transaction::create([
                 'invoice_number'   => 'INV' . time(),
                 'transaction_type' => 'sale',
                 'idpenginput'      => auth()->id(),
                 'user_id'          => auth()->id(),
+                'warehouse_id'     => $warehouseId, // ⬅️ PENTING
                 'subtotal'         => $subtotal,
-                'discount'         => $discount,
-                'tax'              => $tax,
-                'shipping_cost'    => $shipping_cost,
                 'total'            => $total,
                 'payment_status'   => $isUtang ? 'unpaid' : 'paid',
                 'payment_method'   => $request->payment_method ?? 'cash',
-                'status'           => 'completed',
                 'uang_diterima'    => $uangDiterima,
                 'kembalian'        => $kembalian,
-                'customer_name'    => $isUtang ? ($request->customer_name ?? 'Pelanggan Tidak Dikenal') : null,
-                'due_date'         => $isUtang ? ($request->due_date ?? now()->addDays(7)) : null, // default 7 hari jika tidak diisi
+                'customer_name'    => $isUtang ? $request->customer_name : null,
+                'due_date'         => $isUtang ? $request->due_date : null,
+                'status'           => 'completed',
             ]);
 
-            // Ambil gudang toko (store)
-            $storeWarehouse = Warehouse::where('type', 'store')->first();
-            if (!$storeWarehouse) {
-                throw new \Exception("Warehouse bertipe 'store' (toko) tidak ditemukan. Pastikan ada data gudang tipe store.");
-            }
-            $storeWarehouseId = $storeWarehouse->id;
-
-            // Loop item dalam cart => validasi & kurangi stok di warehouse_products
             foreach ($cart as $item) {
-                $productId   = null;
-                $variationId = null;
+
                 $qty = (int) ($item['quantity'] ?? 0);
                 if ($qty <= 0) {
-                    throw new \Exception("Quantity tidak valid untuk item: " . json_encode($item));
+                    throw new \Exception('Quantity tidak valid');
                 }
-
+            
+                $productId   = null;
+                $variationId = null;
+            
                 if ($item['type'] === 'variation') {
-                    $variation = ProductVariation::with('product')->find($item['id']);
-                    if (!$variation) {
-                        throw new \Exception("Varian tidak ditemukan (ID: {$item['id']})");
-                    }
+                    $variationId = $item['id'];
+                    $variation   = ProductVariation::findOrFail($variationId);
                     $productId   = $variation->product_id;
-                    $variationId = $variation->id;
                 } else {
                     $productId = $item['id'];
                 }
-
-                // Simpan detail item transaksi
+            
                 TransactionItem::create([
                     'transaction_id' => $transaction->id,
-                    'idpenginput'    => auth()->id(),
                     'product_id'     => $productId,
-                    'variation_id'   => $variationId,
+                    'variation_id'   => $variationId, // ✅ aman (nullable)
                     'quantity'       => $qty,
                     'price'          => $item['price'],
                     'discount'       => $item['discount'] ?? 0,
                     'subtotal'       => $item['subtotal'],
-                    'unit'           => $item['unit'] ?? 'pcs'
+                    'unit'           => $item['unit'] ?? 'pcs',
+                    'idpenginput'    => auth()->id(),
                 ]);
-
-                // Ambil stok dari gudang toko
+            
+                // 🔻 potong stok outlet aktif
                 $wpQuery = DB::table('warehouse_products')
-                    ->where('warehouse_id', $storeWarehouseId)
+                    ->where('warehouse_id', $warehouseId)
                     ->where('product_id', $productId);
-
-                if ($variationId) {
-                    $wpQuery->where('variation_id', $variationId);
-                } else {
-                    $wpQuery->whereNull('variation_id');
-                }
-
+            
+                $variationId
+                    ? $wpQuery->where('variation_id', $variationId)
+                    : $wpQuery->whereNull('variation_id');
+            
                 $wp = $wpQuery->first();
-
-                if (!$wp) {
-                    throw new \Exception("Stok produk belum terdaftar di gudang toko (product_id: {$productId}, variation_id: " . ($variationId ?? 'null') . ").");
+            
+                if (!$wp || $wp->stock < $qty) {
+                    throw new \Exception('Stok tidak mencukupi saat checkout');
                 }
-
-                if ((int)$wp->stock < $qty) {
-                    throw new \Exception("Stok tidak mencukupi untuk produk ID: {$productId}" . ($variationId ? " (variasi {$variationId})" : "") . ". Tersedia: {$wp->stock}, diminta: {$qty}");
-                }
-
-                // Kurangi stok di warehouse_products
+            
                 DB::table('warehouse_products')
                     ->where('id', $wp->id)
                     ->decrement('stock', $qty);
-
-                // Update ringkasan penjualan harian
-                $summary = ProductSalesSummary::firstOrNew([
-                    'product_id'   => $productId,
-                    'variation_id' => $variationId,
-                    'date'         => now()->toDateString()
-                ]);
-                $summary->idpenginput   = auth()->id();
-                $summary->total_qty     = ($summary->total_qty ?? 0) + $qty;
-                $summary->total_sales   = ($summary->total_sales ?? 0) + $item['subtotal'];
-                $summary->save();
-            }
+            }            
 
             DB::commit();
-            session()->forget('cart');
+
+            // ✅ HANYA HAPUS CART OUTLET INI
+            session()->forget("cart.$warehouseId");
 
             return response()->json([
-                'status'          => 'success',
-                'message'         => $isUtang ? 'Transaksi berhasil (utang tercatat).' : 'Transaksi berhasil!',
-                'transaction_id'  => $transaction->id,
-                'total'           => $total,
-                'uang_diterima'   => $uangDiterima,
-                'kembalian'       => $kembalian,
-                'payment_status'  => $transaction->payment_status,
-                'customer_name'   => $transaction->customer_name,
-                'due_date'        => $transaction->due_date,
+                'status' => 'success',
+                'transaction_id' => $transaction->id,
+                'total' => $total,
+                'kembalian' => $kembalian
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Checkout error: ' . $e->getMessage());
-
             return response()->json([
-                'status'  => 'error',
+                'status' => 'error',
                 'message' => $e->getMessage()
             ]);
         }
@@ -502,66 +429,78 @@ class PosController extends Controller
 
     public function addVariationToCart(Request $request, $id)
     {
-        $variation = ProductVariation::with(['product', 'options.attribute'])->findOrFail($id);
-        $cart = session()->get('cart', []);
+        $warehouseId = session('active_warehouse_id');
 
-        $qty = max(1, (int) $request->qty); // ✅ Pastikan qty dikirim & minimal 1
-
-        // 🔹 Hitung stok variasi dari transfer ke toko (warehouse type = store)
-        $availableStock = DB::table('warehouse_transfers')
-            ->join('warehouses', 'warehouses.id', '=', 'warehouse_transfers.to_warehouse_id')
-            ->where('warehouses.type', 'store')
-            ->where('warehouse_transfers.variation_id', $id)
-            ->where('warehouse_transfers.status', 'received')
-            ->sum('warehouse_transfers.quantity');
-
-        // 🔹 Kurangi dengan yang sudah ada di keranjang
-        $cartQty = collect($cart)
-            ->where('type', 'variation')
-            ->where('id', $id)
-            ->sum('quantity');
-
-        if ($availableStock - $cartQty < $qty) {
+        // 🔒 Pastikan outlet aktif
+        if (!$warehouseId) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Stok varian ini tidak mencukupi! (tersisa: ' . ($availableStock - $cartQty) . ')'
+                'message' => 'Outlet belum dipilih'
             ]);
         }
 
-        // 🔹 Buat label variasi
+        $variation = ProductVariation::with(['product', 'options.attribute'])->findOrFail($id);
+
+        // 🔹 Ambil cart PER OUTLET (INI KUNCI)
+        $cart = session()->get("cart.$warehouseId", []);
+
+        $qty = max(1, (int) ($request->qty ?? 1));
+
+        // 🔹 Ambil stok variasi DARI OUTLET AKTIF
+        $stock = DB::table('warehouse_products')
+            ->where('warehouse_id', $warehouseId)
+            ->where('product_id', $variation->product_id)
+            ->where('variation_id', $variation->id)
+            ->value('stock') ?? 0;
+
+        // 🔹 Hitung qty varian yg sudah ada di cart outlet ini
+        $cartQty = collect($cart)
+            ->where('type', 'variation')
+            ->where('id', $variation->id)
+            ->sum('quantity');
+
+        $available = $stock - $cartQty;
+
+        if ($available < $qty) {
+            return response()->json([
+                'status' => 'error',
+                'message' => "Stok varian tidak mencukupi! (tersisa: {$available})"
+            ]);
+        }
+
+        // 🔹 Label variasi
         $optionLabels = $variation->options->map(fn($opt) => $opt->value)->implode(' / ');
-        $weightText   = $variation->weight ? ' [ ' . number_format($variation->weight, 0, ',', '.') . ' gr ]' : '';
+        $weightText   = $variation->weight ? ' [ ' . number_format($variation->weight) . ' gr ]' : '';
         $variationLabel = trim($optionLabels . $weightText);
 
-        // 🔹 Gunakan harga variasi atau fallback ke harga produk
         $price = $variation->price ?? $variation->product->price;
 
         $key = "variation_{$variation->id}";
 
-        // 🔹 Tambahkan atau update quantity
         if (isset($cart[$key])) {
             $cart[$key]['quantity'] += $qty;
         } else {
             $cart[$key] = [
-                "id"        => $variation->id,
-                "type"      => "variation",
-                "name"      => $variation->product->name ?? 'Produk',
-                "variation" => $variationLabel,
-                "quantity"  => $qty,
-                "price"     => $price,
-                "thumbnail" => $variation->image ?? ($variation->product->thumbnail ?? null),
-                "discount"  => 0,
-                "subtotal"  => $price * $qty,
-                "unit"      => $variation->product->unit ?? 'pcs'
+                'id'        => $variation->id,
+                'type'      => 'variation',
+                'name'      => ($variation->product->sku ?? '-') . ' / ' . $variation->product->name,
+                'variation' => $variationLabel,
+                'quantity'  => $qty,
+                'price'     => $price,
+                'subtotal'  => 0,
+                'unit'      => $variation->product->unit ?? 'pcs',
             ];
         }
 
-        // 🔹 Hitung ulang subtotal
-        $cart[$key]['subtotal'] = ($cart[$key]['price'] * $cart[$key]['quantity']) - $cart[$key]['discount'];
+        $cart[$key]['subtotal'] = $cart[$key]['price'] * $cart[$key]['quantity'];
 
-        session()->put('cart', $cart);
+        // 🔥 SIMPAN KE CART OUTLET
+        session()->put("cart.$warehouseId", $cart);
 
-        return response()->json(['status' => 'success', 'cart' => $cart]);
+        return response()->json([
+            'status' => 'success',
+            'cart'   => $cart
+        ]);
     }
 
     public function updateDiscount(Request $request)
@@ -745,15 +684,39 @@ class PosController extends Controller
 
     public function summary()
     {
-        // ✅ Hitung total produk utama
+        // 1️⃣ Total produk
         $totalProduk = Product::count();
 
-        // ✅ Hitung total stok (produk utama + seluruh variasi)
-        $totalStok = Product::sum('stock') + ProductVariation::sum('stock');
+        // 2️⃣ Total stok produk utama
+        $stokProdukUtama = 0;
 
-        // ✅ Hitung jumlah transaksi stok hari ini
-        $today = Carbon::today();
-        $totalTransaksi = StockTransaction::whereDate('created_at', $today)->count();
+        // 🔹 Kalau products punya kolom stock
+        if (Schema::hasColumn('products', 'stock')) {
+            $stokProdukUtama = Product::sum('stock');
+        }
+        // 🔹 Kalau tidak, ambil dari warehouse_transfers (produk tanpa variasi)
+        else if (Schema::hasTable('warehouse_transfers')) {
+            $stokProdukUtama = DB::table('warehouse_transfers')
+                ->whereNull('variation_id')
+                ->where('status', 'received')
+                ->sum('quantity');
+        }
+
+        // 3️⃣ Total stok variasi (kalau tabelnya ada)
+        $stokVariasi = 0;
+        if (Schema::hasTable('product_variations') && Schema::hasColumn('product_variations', 'stock')) {
+            $stokVariasi = ProductVariation::sum('stock');
+        }
+
+        // 4️⃣ Total stok gabungan
+        $totalStok = $stokProdukUtama + $stokVariasi;
+
+        // 5️⃣ Total transaksi hari ini
+        $totalTransaksi = 0;
+        if (Schema::hasTable('stock_transactions')) {
+            $today = Carbon::today();
+            $totalTransaksi = StockTransaction::whereDate('created_at', $today)->count();
+        }
 
         return response()->json([
             'totalProduk'     => $totalProduk,

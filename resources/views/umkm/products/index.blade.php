@@ -207,11 +207,11 @@
 <div class="info-data">
     <div class="card">
         <div class="tabs-menu">
-            <button class="tab-link active" data-target="productContent">List Produk</button>
+            <button class="tab-link" data-target="productContent">List Produk</button>
             <button class="tab-link" data-target="variationContent">Variasi Produk</button>
         </div>
 
-        <div id="productContent" class="tab-pane active">
+        <div id="productContent" class="tab-pane">
             {{-- Tombol tambah produk --}}
             <div class="filters">
                 <form method="GET" action="{{ route('umkm.product') }}" class="filters">
@@ -453,7 +453,12 @@
 
             {{-- PAGINATION --}}
             <div class="pagination-container">
-                {{ $variations->links() }}
+                {{ $variations
+                    ->appends(request()->query())
+                    ->fragment('variationContent')
+                    ->links()
+                }}
+
             </div>
         </div>
 
@@ -1089,167 +1094,162 @@
 </div>
 
 <script>
-    window.variationAttributes = @json($variationAttributes);
-    window.variationOptions = @json(
-        $variationOptions->groupBy('attribute_id')->map(function($items) {
-            return $items->map(function($item) {
-                return [
-                    'id' => $item->id,
-                    'value' => $item->value
-                ];
-            });
-        })
-    );
-</script>
-<script>
+/* ============================================================
+   GLOBAL DATA DARI BLADE (AMAN)
+============================================================ */
+window.variationAttributes = @json($variationAttributes);
+window.variationOptions = @json($variationOptions);
+
+/* ============================================================
+   MAIN SCRIPT
+============================================================ */
 document.addEventListener('DOMContentLoaded', function () {
-    // Event saat atribut dipilih
-    document.addEventListener('change', function (e) {
-        if (e.target.classList.contains('attribute-select')) {
-            let attributeId = e.target.value;
-            let optionSelect = e.target.closest('.variation-row').querySelector('.option-select');
 
-            if (attributeId) {
-                fetch(`/umkm/variation-options/${attributeId}`)
-                    .then(res => res.json())
-                    .then(data => {
-                        optionSelect.innerHTML = '<option value="">-- Pilih Opsi --</option>';
-                        data.forEach(opt => {
-                            optionSelect.innerHTML += `<option value="${opt.id}">${opt.value}</option>`;
-                        });
-                    });
-            } else {
-                optionSelect.innerHTML = '<option value="">-- Pilih Opsi --</option>';
-            }
-        }
-    });
-});
-</script>
+    /* ================= TAB CLICK ================= */
+    var tabs = document.querySelectorAll('.tab-link');
 
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    let variationIndex = 1; // sudah ada Variasi #1 di awal
+    for (var i = 0; i < tabs.length; i++) {
+        tabs[i].addEventListener('click', function () {
+            var target = this.getAttribute('data-target');
+            if (!target) return;
 
-    const variationsWrapper = document.getElementById("variationsWrapper");
-    const addVariationBtn = document.getElementById("addVariation");
-
-    // Tambah Variasi Baru
-    addVariationBtn.addEventListener("click", function () {
-        variationIndex++;
-
-        // template blok variasi
-        const variationBlock = document.createElement("div");
-        variationBlock.classList.add("variation-block");
-
-        variationBlock.innerHTML = `
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Variasi</label>
-                    <div class="variation-attributes">
-                        <div class="variation-row mb-2 flex gap-2">
-                            <select name="variations[${variationIndex}][attributes][]" class="attribute-select" required>
-                                <option value="">-- Pilih Atribut --</option>
-                                ${getAttributesOptions()}
-                            </select>
-
-                            <select name="variations[${variationIndex}][options][]" class="option-select" required>
-                                <option value="">-- Pilih Opsi --</option>
-                            </select>
-
-                            <button type="button" class="btn-remove-row">-</button>
-                        </div>
-                    </div>
-                    <button type="button" class="btn-add-attribute">+ Tambah Atribut</button>
-                </div>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Harga</label>
-                    <input type="number" name="variations[${variationIndex}][price]" placeholder="Masukkan harga" required>
-                </div>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Berat (gram)</label>
-                    <input type="number" name="variations[${variationIndex}][weight]" placeholder="Berat dalam gram" required>
-                </div>
-                <div class="form-group">
-                    <label>Foto Variasi</label>
-                    <input type="file" name="variations[${variationIndex}][image]" accept="image/*">
-                </div>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label>SKU (opsional)</label>
-                    <input type="text" name="variations[${variationIndex}][sku]" placeholder="Kode SKU unik">
-                </div>
-                <div class="form-group">
-                    <label>Status</label>
-                    <select name="variations[${variationIndex}][is_active]">
-                        <option value="1">Aktif</option>
-                        <option value="0">Nonaktif</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <button type="button" class="btn-remove-variation">Hapus Variasi</button>
-                </div>
-            </div>
-        `;
-
-        variationsWrapper.appendChild(variationBlock);
-    });
-
-    // Delegasi event untuk tombol Hapus Variasi & Tambah Atribut
-    document.body.addEventListener("click", function (e) {
-        if (e.target.classList.contains("btn-remove-variation")) {
-            e.target.closest(".variation-block").remove();
-        }
-
-        if (e.target.classList.contains("btn-add-attribute")) {
-            const variationBlock = e.target.closest(".variation-block");
-            const attributesContainer = variationBlock.querySelector(".variation-attributes");
-
-            const variationNumber = Array.from(variationsWrapper.children).indexOf(variationBlock);
-            
-            const newRow = document.createElement("div");
-            newRow.classList.add("variation-row", "mb-2", "flex", "gap-2");
-
-            newRow.innerHTML = `
-                <select name="variations[${variationNumber}][attributes][]" class="attribute-select" required>
-                    <option value="">-- Pilih Atribut --</option>
-                    ${getAttributesOptions()}
-                </select>
-
-                <select name="variations[${variationNumber}][options][]" class="option-select" required>
-                    <option value="">-- Pilih Opsi --</option>
-                </select>
-
-                <button type="button" class="btn-remove-row">-</button>
-            `;
-
-            attributesContainer.appendChild(newRow);
-        }
-
-        if (e.target.classList.contains("btn-remove-row")) {
-            e.target.closest(".variation-row").remove();
-        }
-    });
-
-    // Fungsi ambil opsi atribut dari blade (langsung render di JS)
-    function getAttributesOptions() {
-        return `
-            @foreach ($variationAttributes as $attribute)
-                <option value="{{ $attribute->id }}">{{ $attribute->name }}</option>
-            @endforeach
-        `;
+            history.replaceState(null, '', '#' + target);
+            activateTab(target);
+        });
     }
+
+    function activateTab(target) {
+        var panes = document.querySelectorAll('.tab-pane');
+        var tabs  = document.querySelectorAll('.tab-link');
+
+        for (var i = 0; i < panes.length; i++) {
+            panes[i].classList.remove('active');
+        }
+        for (var j = 0; j < tabs.length; j++) {
+            tabs[j].classList.remove('active');
+        }
+
+        var pane = document.getElementById(target);
+        var tab  = document.querySelector('.tab-link[data-target="' + target + '"]');
+
+        if (pane) pane.classList.add('active');
+        if (tab)  tab.classList.add('active');
+    }
+
+    // 🔑 BACA HASH SAAT PAGE LOAD (pagination reload)
+    var hash = window.location.hash
+        ? window.location.hash.replace('#', '')
+        : 'productContent';
+
+    activateTab(hash);
+
+    // Klik tab manual
+    var tabs = document.querySelectorAll('.tab-link');
+    for (var i = 0; i < tabs.length; i++) {
+        tabs[i].addEventListener('click', function () {
+            var target = this.getAttribute('data-target');
+            if (!target) return;
+
+            history.replaceState(null, '', '#' + target);
+            activateTab(target);
+        });
+    }
+
+    /* ================= ATTRIBUTE → OPTION ================= */
+    document.body.addEventListener('change', function (e) {
+        if (!e.target.classList.contains('attribute-select')) return;
+
+        var attributeId = e.target.value;
+        var row = e.target.closest('.variation-row');
+        if (!row) return;
+
+        var optionSelect = row.querySelector('.option-select');
+        if (!optionSelect) return;
+
+        if (!attributeId) {
+            optionSelect.innerHTML = '<option value="">-- Pilih Opsi --</option>';
+            return;
+        }
+
+        fetch('/umkm/variation-options/' + attributeId)
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                optionSelect.innerHTML = '<option value="">-- Pilih Opsi --</option>';
+                for (var i = 0; i < data.length; i++) {
+                    optionSelect.innerHTML +=
+                        '<option value="' + data[i].id + '">' + data[i].value + '</option>';
+                }
+            });
+    });
+
+    /* ================= TAMBAH VARIASI ================= */
+    var variationsWrapper = document.getElementById('variationsWrapper');
+    var addVariationBtn   = document.getElementById('addVariation');
+
+    var variationIndex = variationsWrapper
+        ? variationsWrapper.querySelectorAll('.variation-block').length
+        : 0;
+
+    if (addVariationBtn && variationsWrapper) {
+        addVariationBtn.addEventListener('click', function () {
+            variationIndex++;
+
+            var block = document.createElement('div');
+            block.className = 'variation-block';
+
+            block.innerHTML =
+                '<div class="form-row">' +
+                    '<label>Variasi</label>' +
+                    '<div class="variation-attributes">' +
+                        '<div class="variation-row">' +
+                            '<select name="variations[' + variationIndex + '][attributes][]" class="attribute-select">' +
+                                '<option value="">-- Pilih Atribut --</option>' +
+                                renderAttributes() +
+                            '</select>' +
+                            '<select name="variations[' + variationIndex + '][options][]" class="option-select">' +
+                                '<option value="">-- Pilih Opsi --</option>' +
+                            '</select>' +
+                            '<button type="button" class="btn-remove-row">-</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<button type="button" class="btn-add-attribute">+ Tambah Atribut</button>' +
+                '</div>' +
+                '<div class="form-row"><input type="number" name="variations[' + variationIndex + '][price]" required></div>' +
+                '<div class="form-row"><input type="number" name="variations[' + variationIndex + '][weight]" required></div>' +
+                '<div class="form-row"><input type="file" name="variations[' + variationIndex + '][image]"></div>' +
+                '<div class="form-row"><input type="text" name="variations[' + variationIndex + '][sku]"></div>' +
+                '<button type="button" class="btn-remove-variation">Hapus Variasi</button>';
+
+            variationsWrapper.appendChild(block);
+        });
+    }
+
+    /* ================= EVENT DELEGATION ================= */
+    document.body.addEventListener('click', function (e) {
+
+        if (e.target.classList.contains('btn-remove-variation')) {
+            var block = e.target.closest('.variation-block');
+            if (block) block.remove();
+        }
+
+        if (e.target.classList.contains('btn-remove-row')) {
+            var row = e.target.closest('.variation-row');
+            if (row) row.remove();
+        }
+    });
+
+    /* ================= HELPER ================= */
+    function renderAttributes() {
+        var html = '';
+        for (var i = 0; i < window.variationAttributes.length; i++) {
+            html += '<option value="' +
+                window.variationAttributes[i].id + '">' +
+                window.variationAttributes[i].name +
+                '</option>';
+        }
+        return html;
+    }
+
 });
 </script>
 

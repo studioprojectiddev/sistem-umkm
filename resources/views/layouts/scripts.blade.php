@@ -153,9 +153,11 @@
         const openBtn = document.getElementById('openModalBtn');
         const closeBtn = document.getElementById('closeModalBtn');
 
-        openBtn.addEventListener('click', () => {
-            modal.classList.remove('hidden');
-        });
+        if (openBtn) {
+            openBtn.addEventListener('click', () => {
+                modal.classList.remove('hidden');
+            });
+        }
 
         closeBtn.addEventListener('click', () => {
             modal.classList.add('hidden');
@@ -358,6 +360,9 @@
         });
     });
 
+    const closeBtn = document.getElementById('closeBtn');
+    const modal = document.getElementById('modal');
+
     closeBtn.addEventListener('click', () => {
         modal.classList.add('hidden');
         modal.querySelector('form').reset();
@@ -465,7 +470,10 @@
         links.forEach(link => link.classList.remove('active'));
 
         // Tampilkan konten yang relevan
-        document.getElementById(contentId).style.display = 'block';
+        const el = document.getElementById(contentId);
+        if (el) {
+            el.style.display = 'block';
+        }
 
         // Tambahkan kelas active pada link yang dipilih
         const activeLink = document.querySelector(`[onclick="showContent('${contentId}')"]`);
@@ -925,9 +933,11 @@
         const openBtn = document.getElementById('openModalProductBtn');
         const closeBtn = document.getElementById('closeModalProductBtn');
 
-        openBtn.addEventListener('click', () => {
-            modal.classList.remove('hidden');
-        });
+        if (openBtn) {
+            openBtn.addEventListener('click', () => {
+                modal.classList.remove('hidden');
+            });
+        }
 
         closeBtn.addEventListener('click', () => {
             modal.classList.add('hidden');
@@ -950,9 +960,11 @@
         const container = document.getElementById("variationAttributes");
 
         // Buka modal
-        openBtn.addEventListener("click", () => {
-            modal.classList.remove("hidden");
-        });
+        if (openBtn) {
+            openBtn.addEventListener("click", () => {
+                modal.classList.remove("hidden");
+            });
+        }
 
         // Tutup modal
         closeBtns.forEach(btn => {

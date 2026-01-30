@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\posController;
 use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\KasirController;
 
 Route::get('/', function () {
     return redirect()->route('login');
@@ -78,6 +79,27 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::get('/stock/summary', [PosController::class, 'summary']);
     Route::get('/api/report/products', [PosController::class, 'productReport']);
     Route::get('/umkm/pos/receipt/{id}', [PosController::class, 'receipt'])->name('umkm.pos.receipt');
+
+    Route::post('/umkm/pos/set-outlet', [PosController::class, 'setOutlet']);
+
+    // ADMIN POS (yang lama)
+    Route::get('/pos', [PosController::class, 'index'])
+        ->name('umkm.pos.index');
+
+    // MODE KASIR (TABLET)
+    Route::get('/kasir', [KasirController::class, 'index'])
+        ->name('umkm.kasir.index');
+
+    // CART KASIR (shared logic, outlet aware)
+    Route::post('/kasir/add/{id}', [KasirController::class, 'addToCart']);
+    Route::post('/kasir/add-variation/{id}', [KasirController::class, 'addVariationToCart']);
+    Route::post('/kasir/update/{key}', [KasirController::class, 'updateCart']);
+    Route::delete('/kasir/remove/{key}', [KasirController::class, 'removeFromCart']);
+    Route::post('/kasir/clear', [KasirController::class, 'clearCart']);
+    Route::post('/kasir/checkout', [KasirController::class, 'checkout']);
+    Route::post('/kasir/cart/update-qty', [KasirController::class, 'updateCartQty']);
+    Route::post('/kasir/remove-item', [KasirController::class, 'removeItem'])->name('kasir.removeItem');
+
 
 });
 

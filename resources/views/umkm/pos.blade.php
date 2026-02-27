@@ -713,6 +713,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
             <div style="margin-bottom:10px;">
                 <input type="text" id="productSearch" class="form-control" placeholder="Cari nama produk...">
             </div>
+
             <div class="table-container">
                 <table class="custom-table">
                     <thead>
@@ -726,84 +727,135 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
                             <th>Stok</th>
                             <th>Aksi Kasir</th>
                         </tr>
-                    </thead>
-                    <tbody id="productsTableBody">
+                        </thead>
+
+                        <tbody id="productsTableBody">
                         @foreach($products as $index => $product)
-                        <tr>
+
+                        @php
+                            $hasVariation = $product->variations->count() > 0;
+                            $totalStock  = $product->stockProduct ?? 0;
+                            $isOutOfStock = $totalStock <= 0;
+                        @endphp
+
+                        <tr class="{{ $isOutOfStock ? 'opacity-50' : '' }}">
+                            {{-- No --}}
                             <td>{{ $index + 1 }}</td>
+
+                            {{-- Thumbnail --}}
                             <td>
                                 @if($product->thumbnail)
                                     <img src="{{ asset($product->thumbnail) }}" alt="{{ $product->name }}" width="50">
                                 @else
-                                    <span>-</span>
+                                    <span class="text-muted">-</span>
                                 @endif
                             </td>
+
+                            {{-- Nama Produk + Variasi --}}
                             <td>
-                                {{-- Nama produk utama --}}
                                 <strong>{{ $product->name }}</strong>
 
-                                {{-- Jika produk punya variasi --}}
-                                @if($product->variations->count())
-                                    <ul class="mb-0 ps-3">
-                                        @foreach($product->variations as $vindex => $var)
-                                            <li>
-                                                {{ $vindex + 1 }}.  
-                                                (Stok: {{ $var->stock }},
-                                                Rp {{ number_format($var->price, 0, ',', '.') }},
-                                                {{ $var->weight ?? 0 }} gr)
-
-                                                @if($var->options->count())
+                                {{-- =========================
+                                    PRODUK DENGAN VARIASI
+                                ========================== --}}
+                                @if($hasVariation)
+                                    <table class="table table-sm table-borderless mt-2 mb-0">
+                                        @foreach($product->variation_json as $i => $v)
+                                            <tr>
+                                                <td>
+                                                    {{ $i + 1 }}. {{ $v['name'] }}
                                                     <br>
                                                     <small class="text-muted">
-                                                        [
-                                                        @foreach($var->options as $opt)
-                                                            {{ $opt->attribute->name }}: {{ $opt->value }}@if(!$loop->last), @endif
+                                                        @foreach($v['options'] as $opt)
+                                                            {{ $opt['attribute'] }}: {{ $opt['value'] }}@if(!$loop->last), @endif
                                                         @endforeach
-                                                        ]
                                                     </small>
-                                                @endif
-                                            </li>
+                                                </td>
+                                                <td class="text-end">
+                                                    @if($v['stock'] > 0)
+                                                        <span class="badge bg-success">
+                                                            {{ $v['stock'] }} {{ $product->unit }}
+                                                        </span>
+                                                    @else
+                                                        <span class="badge bg-danger">
+                                                            Habis
+                                                        </span>
+                                                    @endif
+                                                </td>
+                                            </tr>
                                         @endforeach
-                                    </ul>
+                                    </table>
+
+                                    <small class="text-muted fst-italic">
+                                        Total stok tersedia: <strong>{{ $totalStock }} {{ $product->unit }}</strong>
+                                    </small>
+
+                                {{-- =========================
+                                    PRODUK TANPA VARIASI
+                                ========================== --}}
                                 @else
-                                    {{-- Produk tanpa variasi (non-variasi) --}}
-                                    <ul class="mb-0 ps-3">
-                                        <li>
-                                            (Stok: {{ $product->stock }},
-                                            Rp {{ number_format($product->price ?? 0, 0, ',', '.') }},
-                                            {{ $product->weight ?? 0 }} gr)
-                                        </li>
-                                    </ul>
+                                    <div class="mt-1">
+                                        @if($totalStock > 0)
+                                            <span class="badge bg-success">
+                                                {{ $totalStock }} {{ $product->unit }}
+                                            </span>
+                                        @else
+                                            <span class="badge bg-danger">
+                                                Habis
+                                            </span>
+                                        @endif
+                                    </div>
                                 @endif
                             </td>
 
+                            {{-- Kategori --}}
                             <td>{{ $product->category->name ?? '-' }}</td>
+
+                            {{-- SKU / Barcode --}}
                             <td>{{ $product->sku ?? $product->barcode ?? '-' }}</td>
 
+                            {{-- Harga --}}
                             <td>
-                                @if($product->is_promo && $product->promo_start <= now() && $product->promo_end >= now())
-                                    <span class="text-success fw-bold">
+                                @if(
+                                    $product->is_promo &&
+                                    $product->promo_start &&
+                                    $product->promo_end &&
+                                    now()->between($product->promo_start, $product->promo_end)
+                                )
+                                    <span class="fw-bold text-success">
                                         Rp {{ number_format($product->final_price, 0, ',', '.') }}
                                     </span><br>
                                     <small class="text-muted">
                                         <del>Rp {{ number_format($product->price, 0, ',', '.') }}</del>
-                                        <br>Promo: {{ \Carbon\Carbon::parse($product->promo_start)->format('d M') }} -
-                                        {{ \Carbon\Carbon::parse($product->promo_end)->format('d M Y') }}
                                     </small>
                                 @else
                                     Rp {{ number_format($product->final_price, 0, ',', '.') }}
                                 @endif
                             </td>
 
-                            <td>{{ $product->stockProduct }}</td>
-
+                            {{-- Stok Total --}}
                             <td>
-                                <button class="btn btn-sm btn-success btn-add-cart"
+                                @if($totalStock > 0)
+                                    <span class="fw-bold text-success">
+                                        {{ $totalStock }} {{ $product->unit }}
+                                    </span>
+                                @else
+                                    <span class="fw-bold text-danger">
+                                        Habis
+                                    </span>
+                                @endif
+                            </td>
+
+                            {{-- Aksi Kasir --}}
+                            <td>
+                                <button
+                                    class="btn btn-sm btn-success btn-add-cart"
+                                    {{ $isOutOfStock ? 'disabled' : '' }}
                                     data-id="{{ $product->id }}"
-                                    data-price="{{ $product->price }}"
                                     data-final-price="{{ $product->final_price }}"
-                                    data-has-variation="{{ $product->variations->count() > 0 ? 1 : 0 }}"
-                                    data-variations='@json($product->variation_json)'>
+                                    data-has-variation="{{ $hasVariation ? 1 : 0 }}"
+                                    data-variations='@json($product->variation_json)'
+                                >
                                     + Keranjang
                                 </button>
                             </td>
@@ -915,59 +967,73 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
                                 <th>Terjual</th>
                                 <th>Minimal Stok</th>
                                 <th>Status</th>
-                                <!-- <th>Aksi</th> -->
                             </tr>
                         </thead>
+
                         <tbody id="stockTableBody">
-                        {{-- contoh di dalam loop product --}}
-                            @foreach($products as $p)
+                        @foreach($products as $p)
+
+                            {{-- BARIS PRODUK --}}
+                            <tr>
+                                <td>{{ $p->name }} ({{ $p->sku ?? 'No SKU' }})</td>
+                                <td>
+                                    @if($p->variations->isEmpty())
+                                        -
+                                    @else
+                                        {{ $p->variations->count() }} variasi
+                                    @endif
+                                </td>
+
+                                <td>{{ $p->stockProduct }}</td>
+
+                                {{-- 🔥 TOTAL TERJUAL PRODUK --}}
+                                <td>{{ $p->total_sold ?? 0 }}</td>
+
+                                <td>{{ $p->min_stock ?? 0 }}</td>
+
+                                <td>
+                                    @if($p->stockProduct <= ($p->min_stock ?? 5))
+                                        <span class="badge bg-danger">⚠️ Hampir Habis</span>
+                                    @else
+                                        <span class="badge bg-success">✔️ Aman</span>
+                                    @endif
+                                </td>
+                            </tr>
+
+                            {{-- BARIS VARIASI --}}
+                            @foreach($p->variation_json as $v)
                                 <tr>
-                                    <td>{{ $p->name }} ({{ $p->sku ?? 'No SKU' }})</td>
+                                    <td class="ps-4">↳ {{ $p->name }}</td>
+
                                     <td>
-                                        @if($p->variations->isEmpty())
-                                            -
-                                        @else
-                                            {{ $p->variations->count() }} variasi
+                                        {{ $v['name'] }}
+                                        @if(!empty($v['weight']))
+                                            ({{ number_format($v['weight']) }} gr)
+                                        @endif
+                                        @if(!empty($v['options']))
+                                            - {{ implode(', ', array_column($v['options'], 'value')) }}
                                         @endif
                                     </td>
-                                    <td>{{ $p->stockProduct }}</td>
-                                    <td>{{ $p->total_sold ?? 0 }}</td>
-                                    <td>{{ $p->min_stock ?? 0 }}</td>
+
+                                    <td>{{ $v['stock'] }}</td>
+
+                                    {{-- 🔥 TERJUAL VARIASI --}}
+                                    <td>{{ $v['sold'] ?? 0 }}</td>
+
+                                    <td>{{ $v['min_stock'] ?? 5 }}</td>
+
                                     <td>
-                                        @if($p->stockProduct <= ($p->min_stock ?? 5))
-                                            <span class="badge badge-danger">⚠️ Hampir Habis</span>
+                                        @if($v['stock'] <= ($v['min_stock'] ?? 5))
+                                            <span class="badge bg-danger">⚠️ Hampir Habis</span>
                                         @else
-                                            <span class="badge badge-success">✔️ Aman</span>
+                                            <span class="badge bg-success">✔️ Aman</span>
                                         @endif
                                     </td>
                                 </tr>
-
-                                {{-- variasi --}}
-                                @foreach($p->variation_json as $v)
-                                    <tr>
-                                        <td>{{ $p->name }} ({{ $p->sku ?? 'No SKU' }})</td>
-                                        <td>
-                                            {{ $v['name'] }}
-                                            @if($v['weight']) [ {{ number_format($v['weight']) }} gr ] @endif
-                                            @if(count($v['options']) > 0)
-                                                ({{ implode(' / ', array_column($v['options'], 'value')) }})
-                                            @endif
-                                        </td>
-                                        <td>{{ $v['stock'] }}</td>
-                                        <td>{{ $v['sold'] ?? 0 }}</td>
-                                        <td>{{ $v['min_stock'] ?? 5 }}</td>
-                                        <td>
-                                            @if($v['stock'] <= ($v['min_stock'] ?? 5))
-                                                <span class="badge badge-danger">⚠️ Hampir Habis</span>
-                                            @else
-                                                <span class="badge badge-success">✔️ Aman</span>
-                                            @endif
-                                        </td>
-                                    </tr>
-                                @endforeach
                             @endforeach
-                        </tbody>
 
+                        @endforeach
+                        </tbody>
                     </table>
                     <div id="tablePagination" class="pagination-container"></div>
                     <!-- Pagination Controls + Total Data -->
@@ -1131,13 +1197,13 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
         <div id="laporanproduk" class="tab-pane">
 
             <!-- Filter & Rentang Tanggal -->
-            <div class="filter-container">
+            {{-- <div class="filter-container">
                 <label>Dari:</label>
                 <input type="date" class="form-control" id="filterStart" value="{{ date('Y-m-01') }}">
                 <label>Sampai:</label>
                 <input type="date" class="form-control" id="filterEnd" value="{{ date('Y-m-d') }}">
                 <button class="btn-primary" id="btnFilter">Terapkan</button>
-            </div><br>
+            </div><br> --}}
 
             <!-- Ringkasan Statistik -->
             <div class="stats-container mt-4">
@@ -1175,9 +1241,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
                                 <th>Total Terjual</th>
                                 <th>Stok Tersedia</th>
                                 <th>Stok Akhir</th>
-                                <th>Masuk</th>
-                                <th>Keluar</th>
-                                <th>Adjust</th>
                                 <th>Pendapatan (Rp)</th>
                             </tr>
                         </thead>
@@ -1452,6 +1515,7 @@ $("#clearCart").click(function(){
     });
 });
 
+console.log("Binding checkout...");
 // Checkout
 $("#checkout").click(function(){
     const totalHarga = $("#cartTable tbody tr").toArray().reduce((sum, tr) => {
@@ -1481,6 +1545,15 @@ $("#checkout").click(function(){
                     <label for="dueDate">Tanggal Pembayaran:</label>
                     <input id="dueDate" type="date" class="swal2-input">
                 </div>
+
+                <label>Metode Pembayaran / Rekening:</label>
+                <select id="account_id" class="swal2-input">
+                    @foreach($accounts as $acc)
+                        <option value="{{ $acc->id }}">
+                            {{ $acc->name }}
+                        </option>
+                    @endforeach
+                </select>
 
                 <p id="kembalianText" style="margin-top:10px;font-weight:bold;font-size:15px;color:green;">
                     Kembalian: Rp 0
@@ -1527,10 +1600,20 @@ $("#checkout").click(function(){
                     return false;
                 }
 
-                return { uang, customer_name: nama, due_date: jatuhTempo };
+                return { 
+                    uang, 
+                    customer_name: nama, 
+                    due_date: jatuhTempo,
+                    account_id: document.getElementById('account_id').value
+                };
             }
 
-            return { uang, customer_name: null, due_date: null };
+            return { 
+                uang, 
+                customer_name: null, 
+                due_date: null,
+                account_id: document.getElementById('account_id').value
+            };
         }
     }).then(result => {
         if (result.isConfirmed) {
@@ -1545,36 +1628,41 @@ $("#checkout").click(function(){
                 uang_diterima: uangDiterima,
                 kembalian: kembalian,
                 customer_name: data.customer_name,
-                due_date: data.due_date
+                due_date: data.due_date,
+                account_id: data.account_id
             }, function(res){
+
                 if (res.status === "success") {
+
                     Swal.fire({
                         icon: 'success',
                         title: 'Transaksi Berhasil!',
                         html: `
-                            <p><strong>Total:</strong> Rp ${totalHarga.toLocaleString()}</p>
-                            <p><strong>Pembayaran:</strong> Rp ${uangDiterima.toLocaleString()}</p>
-                            ${res.payment_status === 'partial' ? `
-                                <p style="color:red;"><strong>UTANG:</strong> Rp ${(totalHarga - uangDiterima).toLocaleString()}</p>
-                                <p><strong>Nama:</strong> ${data.customer_name}</p>
-                                <p><strong>Jatuh Tempo:</strong> ${data.due_date}</p>
-                            ` : `
-                                <p><strong>Kembalian:</strong> Rp ${kembalian.toLocaleString()}</p>
-                            `}
+                            <div style="text-align:left;">
+                                <p><strong>Total:</strong> Rp ${totalHarga.toLocaleString()}</p>
+                                <p><strong>Dibayar:</strong> Rp ${uangDiterima.toLocaleString()}</p>
+                                <p style="color:green;">
+                                    <strong>Kembalian:</strong> Rp ${kembalian.toLocaleString()}
+                                </p>
+                            </div>
                         `,
                         showCancelButton: true,
                         confirmButtonText: 'Cetak Struk',
                         cancelButtonText: 'Tutup'
                     }).then(printRes => {
+
                         if (printRes.isConfirmed) {
                             window.open(`/umkm/pos/receipt/${res.transaction_id}`, '_blank');
                         }
+
                         refreshCart([]);
                         location.reload();
                     });
+
                 } else {
                     Swal.fire('Error', res.message || 'Checkout gagal', 'error');
                 }
+
             });
         }
     });
@@ -1871,6 +1959,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let reportData = [];
     let laporanPage = 1;
     let totalPages = 1;
+    let chartPenjualanInstance = null;
 
     async function loadProductReport() {
         const start = document.getElementById('filterStart').value;
@@ -1880,20 +1969,71 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch(`/api/report/products?start=${start}&end=${end}`);
             const data = await res.json();
 
-            // ringkasan
+            // ===== RINGKASAN =====
             document.getElementById('bestProduct').textContent = data.bestProduct;
             document.getElementById('totalSales').textContent = data.totalSales;
             document.getElementById('totalStockMovement').textContent = data.totalStockMovement;
 
+            // ===== TABLE =====
             reportData = data.details || [];
             totalPages = Math.ceil(reportData.length / PER_PAGE) || 1;
-
             laporanPage = 1;
             renderPage(laporanPage);
+
+            // ===== CHART =====
+            renderChartPenjualan(data.chart || []);
+
         } catch (err) {
             console.error('Gagal load laporan produk', err);
         }
     }
+
+    function renderChartPenjualan(chartData) {
+
+        const ctx = document.getElementById('chartPenjualan').getContext('2d');
+
+        const labels = chartData.map(d => d.tanggal);
+        const values = chartData.map(d => d.total);
+
+        // destroy chart lama (biar tidak numpuk saat filter)
+        if (chartPenjualanInstance) {
+            chartPenjualanInstance.destroy();
+        }
+
+        chartPenjualanInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Total Terjual',
+                    data: values,
+                    borderWidth: 2,
+                    tension: 0.3,
+                    fill: true,
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    pointRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: true
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                }
+            }
+        });
+    }
+
 
     function renderPage(page) {
         laporanPage = page;
@@ -1911,15 +2051,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${d.sold}</td>
                     <td>${d.stock_start}</td>
                     <td>${d.stock_end}</td>
-                    <td>${d.masuk}</td>
-                    <td>${d.keluar}</td>
-                    <td>${d.adjust}</td>
                     <td>Rp ${new Intl.NumberFormat('id-ID').format(d.revenue)}</td>
                 </tr>
             `;
         });
 
-        // info bawah
         infoBox.textContent =
             `Menampilkan ${start + 1}–${end} dari ${reportData.length} data`;
 
@@ -1928,10 +2064,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderPagination() {
         pagination.innerHTML = '';
-
         if (totalPages <= 1) return;
 
-        // ⬅ Prev
         const prev = document.createElement('button');
         prev.textContent = '« Prev';
         prev.className = 'btn btn-sm btn-pagination-nav';
@@ -1939,13 +2073,11 @@ document.addEventListener('DOMContentLoaded', () => {
         prev.onclick = () => renderPage(laporanPage - 1);
         pagination.appendChild(prev);
 
-        // info halaman
         const pageInfo = document.createElement('span');
         pageInfo.style.margin = '0 12px';
         pageInfo.textContent = `Halaman ${laporanPage} / ${totalPages}`;
         pagination.appendChild(pageInfo);
 
-        // Next ➡
         const next = document.createElement('button');
         next.textContent = 'Next »';
         next.className = 'btn btn-sm btn-pagination-nav';
@@ -1954,9 +2086,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pagination.appendChild(next);
     }
 
-    // tombol filter
     document.getElementById('btnFilter').addEventListener('click', loadProductReport);
-
     loadProductReport();
 });
 </script>

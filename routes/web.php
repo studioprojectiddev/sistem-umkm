@@ -6,6 +6,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\posController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\KasirController;
+use App\Http\Controllers\TransactionController;
 
 Route::get('/', function () {
     return redirect()->route('login');
@@ -100,7 +101,30 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::post('/kasir/cart/update-qty', [KasirController::class, 'updateCartQty']);
     Route::post('/kasir/remove-item', [KasirController::class, 'removeItem'])->name('kasir.removeItem');
 
-
+    Route::get('/income', [TransactionController::class, 'income'])->name('umkm.transaction.income');
+    Route::post('/income/store', [TransactionController::class, 'store_income'])->name('umkm.transaction.store_income');
+    Route::delete('/income/delte/{id}', [TransactionController::class, 'destroy_income'])->name('umkm.transaction.delete_income');
+    Route::get('/cashflow/trash', [TransactionController::class,'trash'])
+        ->name('umkm.transaction.trash');
+    Route::post('/cashflow/restore/{id}', [TransactionController::class,'restore'])
+        ->name('umkm.transaction.restore');
+    Route::delete('/cashflow/force-delete/{id}', [TransactionController::class,'forceDelete'])
+        ->name('umkm.transaction.forceDelete');
+    Route::get('/umkm/transfer', [TransactionController::class,'transferIndex'])
+        ->name('umkm.transaction.transfer');
+    Route::post('/umkm/transfer', [TransactionController::class,'storeTransfer'])
+        ->name('umkm.transaction.store_transfer');
+    Route::post('/umkm/close-month', [TransactionController::class,'closeMonth'])
+        ->name('umkm.transaction.close_month');
+    Route::post('/umkm/unlock-month', [TransactionController::class,'unlockMonth'])
+        ->name('umkm.transaction.unlock_month');
+    Route::get('/umkm/export_income', [TransactionController::class,'export_income'])
+        ->name('umkm.transaction.export_income');
+    Route::put('/umkm/transaction/update_income/{id}', [TransactionController::class,'update_income']);
+    Route::get('/upload', [TransactionController::class, 'upload'])->name('umkm.transaction.upload');
+    Route::get('/bank', [TransactionController::class, 'bank'])->name('umkm.transaction.bank');
+    Route::get('/history', [TransactionController::class, 'history'])->name('umkm.transaction.history');    
+    
 });
 
 Route::middleware(['auth', 'role:umkm'])->group(function () {

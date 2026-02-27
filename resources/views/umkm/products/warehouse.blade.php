@@ -636,7 +636,7 @@
                                 data-variation-id="{{ $item->variation_id }}"
                                 data-warehouse-id="{{ $item->warehouse_id }}"
                                 data-product-name="{{ $item->product_name }}">
-                                <td>{{ $item->product_name }} ({{ $item->variation_name }})</td>
+                                <td>{{ $item->product_name }} (Rp. {{ $item->variation_name }})</td>
                                 <td>{{ $item->warehouse_name ?? '-' }}</td>
                                 <td>{{ $item->stock_in }}</td>
                                 <td>{{ $item->stock_out }}</td>
@@ -713,7 +713,7 @@
                                 <td>
                                     {{ $item->product_name }}
                                     @if($item->variation_name)
-                                        ({{ $item->variation_name }})
+                                        (Rp. {{ $item->variation_name }})
                                     @endif
                                 </td>
                                 <td>{{ $item->from_warehouse_name }}</td>

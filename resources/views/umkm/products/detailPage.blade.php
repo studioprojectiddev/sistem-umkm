@@ -346,16 +346,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.querySelectorAll('.btn-detail').forEach(btn => {
         btn.addEventListener('click', function(){
-            // Set info produk
-            document.getElementById('modalName').textContent     = this.dataset.name;
-            document.getElementById('modalSku').textContent      = this.dataset.sku;
-            document.getElementById('modalPrice').textContent    = formatCurrency(this.dataset.price);
-            document.getElementById('modalStockProduct').textContent = this.dataset.stockproduct;
-            document.getElementById('modalStock').textContent    = this.dataset.stock;
-            document.getElementById('modalVariants').textContent = this.dataset.variants;
-            document.getElementById('modalSales').textContent    = formatCurrency(this.dataset.sales);
-            document.getElementById('modalSold').textContent     = this.dataset.sold;
-
+            
             // Tampilkan modal & loading row
             modal.classList.add('active');
             variantBody.innerHTML = `<tr><td colspan="3" style="padding:8px;text-align:center;color:#888;">Memuat data...</td></tr>`;
@@ -364,25 +355,34 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(`/productdetail/${this.dataset.id}`)
                 .then(res => res.json())
                 .then(data => {
+
+                    // 🔹 SET HEADER MODAL REALTIME
+                    document.getElementById('modalName').textContent          = data.name;
+                    document.getElementById('modalPrice').textContent         = formatCurrency(data.price);
+                    document.getElementById('modalStockProduct').textContent  = data.stock_product;
+                    document.getElementById('modalStock').textContent         = data.stock_total;
+                    document.getElementById('modalVariants').textContent      = data.variants_count;
+                    document.getElementById('modalSales').textContent         = formatCurrency(data.total_revenue);
+                    document.getElementById('modalSold').textContent          = data.total_qty_sold;
+                    
+                    // 🔹 VARIATION TABLE
                     if(data.variations && data.variations.length){
                         let rows = '';
                         data.variations.forEach(v => {
                             rows += `
-                                <tr>
-                                    <td style="padding:6px;">${v.name}</td>
-                                    <td style="padding:6px;text-align:right;">${formatCurrency(v.price)}</td>
-                                    <td style="padding:6px;text-align:right;">${v.stock}</td>
-                                    <td style="padding:6px;text-align:right;">${v.sold ?? 0}</td>
-                                </tr>`;
+                            <tr>
+                                <td style="padding:6px;">${v.name}</td>
+                                <td style="padding:6px;text-align:right;">${formatCurrency(v.price)}</td>
+                                <td style="padding:6px;text-align:right;">${v.stock}</td>
+                                <td style="padding:6px;text-align:right;">${v.sold ?? 0}</td>
+                            </tr>`;
                         });
                         variantBody.innerHTML = rows;
                     } else {
-                        variantBody.innerHTML = `<tr><td colspan="3" style="padding:8px;text-align:center;color:#888;">Tidak ada varian</td></tr>`;
+                        variantBody.innerHTML = `<tr><td colspan="4" style="padding:8px;text-align:center;color:#888;">Tidak ada varian</td></tr>`;
                     }
+
                 })
-                .catch(() => {
-                    variantBody.innerHTML = `<tr><td colspan="3" style="padding:8px;text-align:center;color:#d33;">Gagal memuat data</td></tr>`;
-                });
         });
     });
 

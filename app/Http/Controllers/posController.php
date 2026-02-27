@@ -14,6 +14,10 @@ use App\Models\ProductVariation;
 use App\Models\StockTransaction;
 use App\Models\Warehouse;
 use App\Models\WarehouseTransfer;
+use App\Models\CashFlow;
+use App\Models\CashflowCategory;
+use App\Models\Account;
+use App\Models\Category;
 use Carbon\Carbon;
 
 class PosController extends Controller
@@ -23,77 +27,91 @@ class PosController extends Controller
      */
     public function index()
     {
-        // 🔹 Ambil outlet aktif
         $warehouseId = session('active_warehouse_id');
+        $needOutlet  = !$warehouseId;
 
-        // 🔹 Flag untuk view (popup pilih outlet)
-        $needOutlet = false;
-        if (!$warehouseId) {
-            $needOutlet = true;
-        }
-
-        /**
-         * ======================================================
-         * CART (WAJIB PER OUTLET)
-         * ======================================================
-         */
         $cart = $warehouseId
             ? session()->get("cart.$warehouseId", [])
             : [];
 
-        /**
-         * ======================================================
-         * PRODUK & VARIASI (HANYA JIKA OUTLET DIPILIH)
-         * ======================================================
-         */
         $products = collect();
         $productsForJs = [];
 
         if ($warehouseId) {
 
-            $products = Product::with([
-                    'category',
-                    'variations.options.attribute'
-                ])
-                ->leftJoin('warehouse_products as wp', function ($q) use ($warehouseId) {
-                    $q->on('wp.product_id', '=', 'products.id')
-                    ->where('wp.warehouse_id', $warehouseId)
-                    ->whereNull('wp.variation_id');
-                })
+            /* ===============================
+            * STOCK WAREHOUSE
+            * =============================== */
+            $warehouseStocks = DB::table('warehouse_products')
+                ->where('warehouse_id', $warehouseId)
+                ->get()
+                ->keyBy(fn ($s) => $s->product_id . '-' . ($s->variation_id ?? 0));
+
+            /* ===============================
+            * SOLD ITEMS (SUM QUANTITY)
+            * =============================== */
+            $soldItems = DB::table('transaction_items')
                 ->select(
-                    'products.*',
-                    DB::raw('COALESCE(wp.stock, 0) as stockProduct'),
-                    'wp.min_stock'
+                    'product_id',
+                    'variation_id',
+                    DB::raw('SUM(quantity) as total_sold')
                 )
-                ->distinct()
-                ->get();
+                ->groupBy('product_id', 'variation_id')
+                ->get()
+                ->keyBy(fn ($r) => $r->product_id . '-' . ($r->variation_id ?? 0));
 
-            // 🔹 Inject harga final & stok variasi per outlet
-            $products->each(function ($product) use ($warehouseId) {
+            /* ===============================
+            * PRODUK
+            * =============================== */
+            $products = Product::with([
+                'category',
+                'variations.options.attribute'
+            ])
+            ->where('is_active', true)
+            ->get();
 
-                // Harga final (promo aware)
+            $products->each(function ($product) use ($warehouseStocks, $soldItems) {
+
+                /* ===============================
+                * Harga final
+                * =============================== */
                 $product->final_price =
                     ($product->is_promo &&
-                    $product->promo_start <= now() &&
-                    $product->promo_end >= now())
+                    $product->promo_start &&
+                    $product->promo_end &&
+                    now()->between($product->promo_start, $product->promo_end))
                     ? $product->promo_price
                     : $product->price;
 
-                // Variasi + stok outlet
-                $product->variation_json = $product->variations->map(function ($v, $i) use ($warehouseId, $product) {
+                /* ==================================================
+                * PRODUK UTAMA (variation_id = 0)
+                * ================================================== */
+                $keyInduk = $product->id . '-0';
 
-                    $stock = DB::table('warehouse_products')
-                        ->where('warehouse_id', $warehouseId)
-                        ->where('product_id', $product->id)
-                        ->where('variation_id', $v->id)
-                        ->value('stock') ?? 0;
+                $product->stockProduct =
+                    $warehouseStocks[$keyInduk]->stock ?? 0;
+
+                // 🔥 INI YANG KAMU BUTUHKAN
+                $product->total_sold =
+                    $soldItems[$keyInduk]->total_sold ?? 0;
+
+                /* ==================================================
+                * VARIASI
+                * ================================================== */
+                $product->variation_json = $product->variations->map(function ($v) use (
+                    $product,
+                    $warehouseStocks,
+                    $soldItems
+                ) {
+
+                    $keyVar = $product->id . '-' . $v->id;
 
                     return [
-                        'no'           => $i + 1,
                         'variation_id' => $v->id,
                         'name'         => $v->name,
                         'price'        => $v->price,
-                        'stock'        => $stock,
+                        'stock'        => $warehouseStocks[$keyVar]->stock ?? 0,
+                        'sold'         => $soldItems[$keyVar]->total_sold ?? 0,
                         'weight'       => $v->weight ?? 0,
                         'options'      => $v->options->map(fn ($o) => [
                             'attribute' => $o->attribute->name,
@@ -103,7 +121,9 @@ class PosController extends Controller
                 })->toArray();
             });
 
-            // 🔹 Data untuk JS POS
+            /* ===============================
+            * DATA JS POS
+            * =============================== */
             $productsForJs = $products->map(function ($p) {
                 return [
                     'id'           => $p->id,
@@ -120,27 +140,20 @@ class PosController extends Controller
             })->toArray();
         }
 
-        /**
-         * ======================================================
-         * LIST OUTLET (STORE)
-         * ======================================================
-         */
         $stores = Warehouse::where('type', 'store')
             ->select('id', 'name')
             ->orderBy('name')
             ->get();
 
-        /**
-         * ======================================================
-         * RETURN VIEW
-         * ======================================================
-         */
+        $accounts = Account::orderBy('name')->get();
+
         return view('umkm.pos', compact(
             'products',
             'productsForJs',
             'cart',
             'needOutlet',
-            'stores'
+            'stores',
+            'accounts'
         ));
     }
 
@@ -322,14 +335,29 @@ class PosController extends Controller
             ]);
         }
 
+        $request->validate([
+            'account_id' => 'required|exists:accounts,id'
+        ]);
+
         DB::beginTransaction();
         try {
             $subtotal = collect($cart)->sum('subtotal');
             $total = $subtotal;
 
             $uangDiterima = (int) $request->uang_diterima;
+            if ($uangDiterima < 0) {
+                throw new \Exception('Jumlah pembayaran tidak valid');
+            }
             $kembalian = max(0, $uangDiterima - $total);
             $isUtang = $uangDiterima < $total;
+
+            $account = Account::find($request->account_id);
+            $method = match($account->type) {
+                'cash' => 'cash',
+                'bank' => 'bank_transfer',
+                'ewallet' => 'ewallet',
+                default => 'cash'
+            };
 
             // ✅ TRANSAKSI DENGAN OUTLET
             $transaction = Transaction::create([
@@ -341,7 +369,8 @@ class PosController extends Controller
                 'subtotal'         => $subtotal,
                 'total'            => $total,
                 'payment_status'   => $isUtang ? 'unpaid' : 'paid',
-                'payment_method'   => $request->payment_method ?? 'cash',
+                'payment_method'   => $method, 
+                'account_id'       => $account->id,
                 'uang_diterima'    => $uangDiterima,
                 'kembalian'        => $kembalian,
                 'customer_name'    => $isUtang ? $request->customer_name : null,
@@ -397,7 +426,42 @@ class PosController extends Controller
                 DB::table('warehouse_products')
                     ->where('id', $wp->id)
                     ->decrement('stock', $qty);
-            }            
+            }        
+            
+            // ==============================
+            // 🔥 AUTO CREATE CASHFLOW
+            // ==============================
+
+            $salesCategory = CashflowCategory::firstOrCreate(
+                [
+                    'name' => 'Penjualan',
+                    'type' => 'income'
+                ],
+                [
+                    'idpenginput' => auth()->id()
+                ]
+            );
+
+            $paidAmount = min($uangDiterima, $total);
+
+            $alreadyExists = CashFlow::where('reference_type','pos')
+                ->where('reference_id',$transaction->id)
+                ->exists();
+
+            if (!$alreadyExists && $paidAmount > 0) {
+
+                CashFlow::create([
+                    'type' => 'income',
+                    'category_id' => $salesCategory->id,
+                    'amount' => $paidAmount,
+                    'account_id' => $request->account_id,
+                    'transaction_date' => $transaction->created_at,
+                    'description' => 'Penjualan POS #' . $transaction->invoice_number,
+                    'reference_type' => 'pos',
+                    'reference_id' => $transaction->id,
+                    'created_by' => auth()->id(),   // 🔥 INI WAJIB
+                ]);
+            }
 
             DB::commit();
 
@@ -727,159 +791,160 @@ class PosController extends Controller
 
     public function productReport(Request $request)
     {
-        // Parse tanggal (default: awal bulan -> sekarang)
-        $start = Carbon::parse($request->query('start', Carbon::now()->startOfMonth()->toDateString()))->startOfDay();
-        $end   = Carbon::parse($request->query('end',   Carbon::now()->toDateString()))->endOfDay();
+        /* ======================================================
+        * 1️⃣ VALIDASI & RANGE TANGGAL
+        * ====================================================== */
+        $start = Carbon::parse(
+            $request->query('start', Carbon::now()->startOfMonth()->toDateString())
+        )->startOfDay();
 
-        // Total pergerakan stok (stock transactions) & total penjualan (transaction_items)
-        $totalStockMovement = StockTransaction::whereBetween('created_at', [$start, $end])->count();
-        $totalSales = TransactionItem::whereBetween('created_at', [$start, $end])->sum('quantity');
+        $end = Carbon::parse(
+            $request->query('end', Carbon::now()->toDateString())
+        )->endOfDay();
 
-        $details = collect();
+        $warehouseId = session('active_warehouse_id');
 
-        // Ambil semua produk (eager load variasi + opsi)
+        if (!$warehouseId) {
+            return response()->json([
+                'bestProduct' => '-',
+                'totalSales' => 0,
+                'totalStockMovement' => 0,
+                'details' => [],
+                'chart' => []
+            ]);
+        }
+
+        /* ======================================================
+        * 2️⃣ STOK REAL (WAREHOUSE)
+        * ====================================================== */
+        $warehouseStocks = DB::table('warehouse_products')
+            ->where('warehouse_id', $warehouseId)
+            ->get()
+            ->groupBy(fn ($s) => $s->product_id . '-' . ($s->variation_id ?? 0));
+
+        /* ======================================================
+        * 3️⃣ SOLD & REVENUE (TRANSACTION ITEMS)
+        * ====================================================== */
+        $soldItems = DB::table('transaction_items')
+            ->whereBetween('created_at', [$start, $end])
+            ->select(
+                'product_id',
+                'variation_id',
+                DB::raw('SUM(quantity) as sold'),
+                DB::raw('SUM(subtotal) as revenue')
+            )
+            ->groupBy('product_id', 'variation_id')
+            ->get()
+            ->groupBy(fn ($r) => $r->product_id . '-' . ($r->variation_id ?? 0));
+
+        /* ======================================================
+        * 4️⃣ DATA PRODUK + VARIASI
+        * ====================================================== */
         $products = Product::with('variations.options.attribute')->get();
 
-        // Untuk menentukan best seller nanti
-        $totalsForRanking = collect();
+        $details = collect();
+        $ranking = collect();
 
         foreach ($products as $p) {
-            // --- Produk utama (tanpa variasi) ---
-            $soldProducts = TransactionItem::whereBetween('created_at', [$start, $end])
-                ->where('product_id', $p->id)
-                ->whereNull('variation_id')
-                ->sum('quantity');
 
-            $revenueProducts = TransactionItem::whereBetween('created_at', [$start, $end])
-                ->where('product_id', $p->id)
-                ->whereNull('variation_id')
-                ->sum(DB::raw('price * quantity'));
+            /* ===============================
+            * PRODUK UTAMA (NON VARIASI)
+            * =============================== */
+            $key = $p->id . '-0';
 
-            // stock transactions untuk produk (masuk/keluar/adjust) dalam periode
-            $masuk = StockTransaction::whereBetween('created_at', [$start, $end])
-                ->where('item_type', 'product')
-                ->where('item_id', $p->id)
-                ->where('transaction_type', 'in')
-                ->sum('quantity');
+            $stockStart = (int) ($warehouseStocks->get($key)?->first()?->stock ?? 0);
+            $sold       = (int) ($soldItems->get($key)?->first()?->sold ?? 0);
+            $revenue    = (float) ($soldItems->get($key)?->first()?->revenue ?? 0);
 
-            $keluar = StockTransaction::whereBetween('created_at', [$start, $end])
-                ->where('item_type', 'product')
-                ->where('item_id', $p->id)
-                ->where('transaction_type', 'out')
-                ->sum('quantity');
-
-            $adjust = StockTransaction::whereBetween('created_at', [$start, $end])
-                ->where('item_type', 'product')
-                ->where('item_id', $p->id)
-                ->where('transaction_type', 'adjust')
-                ->sum('quantity');
-
-            // stock start = stock_end - masuk + keluar  (agar persisten)
-            $stockEnd = (int) $p->stock;
-            $stockStart = $stockEnd - (int)$masuk + (int)$keluar;
+            $stockEnd = max(0, $stockStart + $sold);
 
             $details->push([
                 'type'        => 'Produk',
                 'name'        => $p->name,
-                'sku'         => $p->sku,
-                'sold'        => (int) $soldProducts,
-                'stock_start' => max(0, (int) $stockStart),
+                'sold'        => $sold,
+                'stock_start' => $stockStart,
                 'stock_end'   => $stockEnd,
-                'masuk'       => (int) $masuk,
-                'keluar'      => (int) $keluar,
-                'adjust'      => (int) $adjust,
-                'revenue'     => (float) $revenueProducts,
+                'revenue'     => $revenue,
             ]);
 
-            $totalsForRanking->push([
-                'type' => 'product',
-                'id'   => $p->id,
-                'name' => $p->name,
-                'total'=> (int) $soldProducts,
+            $ranking->push([
+                'type'  => 'product',
+                'name'  => $p->name,
+                'total' => $sold,
             ]);
 
-            // --- Variasi produk (jika ada) ---
+            /* ===============================
+            * VARIASI PRODUK
+            * =============================== */
             foreach ($p->variations as $v) {
-                $soldVar = TransactionItem::whereBetween('created_at', [$start, $end])
-                    ->where('variation_id', $v->id)
-                    ->sum('quantity');
 
-                $revenueVar = TransactionItem::whereBetween('created_at', [$start, $end])
-                    ->where('variation_id', $v->id)
-                    ->sum(DB::raw('price * quantity'));
+                $vKey = $p->id . '-' . $v->id;
 
-                $masukV = StockTransaction::whereBetween('created_at', [$start, $end])
-                    ->where('item_type', 'variation')
-                    ->where('item_id', $v->id)
-                    ->where('transaction_type', 'in')
-                    ->sum('quantity');
+                $vStockStart = (int) ($warehouseStocks->get($vKey)?->first()?->stock ?? 0);
+                $vSold       = (int) ($soldItems->get($vKey)?->first()?->sold ?? 0);
+                $vRevenue    = (float) ($soldItems->get($vKey)?->first()?->revenue ?? 0);
 
-                $keluarV = StockTransaction::whereBetween('created_at', [$start, $end])
-                    ->where('item_type', 'variation')
-                    ->where('item_id', $v->id)
-                    ->where('transaction_type', 'out')
-                    ->sum('quantity');
-
-                $adjustV = StockTransaction::whereBetween('created_at', [$start, $end])
-                    ->where('item_type', 'variation')
-                    ->where('item_id', $v->id)
-                    ->where('transaction_type', 'adjust')
-                    ->sum('quantity');
-
-                $stockEndV = (int) $v->stock;
-                $stockStartV = $stockEndV - (int)$masukV + (int)$keluarV;
-
-                // format options string (e.g. "Tipe Harga: losan / Ukuran: 144")
-                $optionsArr = $v->options->map(function($opt){
-                    return ($opt->attribute->name ?? '') . ': ' . ($opt->value ?? '');
-                })->toArray();
+                $vStockEnd = max(0, $vStockStart + $vSold);
 
                 $details->push([
                     'type'        => 'Variasi',
-                    'name'        => ($v->product->name ?? '-') . ' - ' . $v->name,
-                    'sku'         => $v->sku ?? null,
-                    'options'     => $optionsArr,
-                    'weight'      => $v->weight ?? null,
-                    'sold'        => (int) $soldVar,
-                    'stock_start' => max(0, (int) $stockStartV),
-                    'stock_end'   => $stockEndV,
-                    'masuk'       => (int) $masukV,
-                    'keluar'      => (int) $keluarV,
-                    'adjust'      => (int) $adjustV,
-                    'revenue'     => (float) $revenueVar,
+                    'name'        => $p->name . ' - ' . $v->name,
+                    'sold'        => $vSold,
+                    'stock_start' => $vStockStart,
+                    'stock_end'   => $vStockEnd,
+                    'revenue'     => $vRevenue,
                 ]);
 
-                $totalsForRanking->push([
-                    'type' => 'variation',
-                    'id'   => $v->id,
-                    'name' => ($v->product->name ?? '-') . ' - ' . $v->name,
-                    'total'=> (int) $soldVar,
+                $ranking->push([
+                    'type'  => 'variation',
+                    'name'  => $p->name . ' - ' . $v->name,
+                    'total' => $vSold,
                 ]);
             }
         }
 
-        // Best seller (gabungan product + variation) berdasarkan total terjual
-        $best = $totalsForRanking->sortByDesc('total')->first();
-        $bestName = $best ? $best['name'] . ' (' . $best['type'] . ')' : '-';
+        /* ======================================================
+        * 5️⃣ RINGKASAN
+        * ====================================================== */
+        $best = $ranking->sortByDesc('total')->first();
 
-        // Chart data: penjualan per tanggal (gabungan)
-        $chart = TransactionItem::selectRaw('DATE(created_at) as tanggal, SUM(quantity) as total')
+        $bestProduct = $best
+            ? $best['name'] . ' (' . $best['type'] . ')'
+            : '-';
+
+        $totalSales = (int) $soldItems->sum(fn ($i) => $i->first()->sold ?? 0);
+
+        /* ======================================================
+        * 6️⃣ CHART PENJUALAN
+        * ====================================================== */
+        $chart = DB::table('transaction_items')
             ->whereBetween('created_at', [$start, $end])
+            ->selectRaw('DATE(created_at) as tanggal, SUM(quantity) as total')
             ->groupBy('tanggal')
             ->orderBy('tanggal')
             ->get()
-            ->map(function($r){
-                return ['tanggal' => $r->tanggal, 'total' => (int) $r->total];
-            });
+            ->map(fn ($r) => [
+                'tanggal' => $r->tanggal,
+                'total'   => (int) $r->total,
+            ]);
 
+        $totalStockMovement = DB::table('warehouse_transfers')
+        ->where('to_warehouse_id', $warehouseId)
+        // ->whereBetween('created_at', [$start, $end])
+        ->sum('quantity');
+
+        /* ======================================================
+        * 7️⃣ RESPONSE
+        * ====================================================== */
         return response()->json([
-            'bestProduct'        => $bestName,
-            'totalSales'         => (int) $totalSales,
-            'totalStockMovement' => (int) $totalStockMovement,
-            'details'            => $details->values(), // koleksi produk+variasi
-            'chart'              => $chart
+            'bestProduct'        => $bestProduct,
+            'totalSales'         => $totalSales,
+            'totalStockMovement' => $totalStockMovement,
+            'details'            => $details->values(),
+            'chart'              => $chart,
         ]);
     }
+
 
     public function receipt($id)
     {

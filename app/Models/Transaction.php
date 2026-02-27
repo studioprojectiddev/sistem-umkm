@@ -25,7 +25,8 @@ class Transaction extends Model
         'customer_name',
         'due_date',
         'kembalian',
-        'status'
+        'status',
+        'account_id'
     ];
 
     public function items()

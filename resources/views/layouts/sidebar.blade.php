@@ -27,10 +27,11 @@
         <li>
             <a href="#"><i class='bx  bx-credit-card-front icon'  ></i>  Transaksi <i class='bx bx-chevron-right icon-right'></i></a>
             <ul class="side-dropdown">
-                <li><a href="">Pemasukan/Pengeluaran</a></li>
-                <li><a href="" >Upload nota (OCR)</a></li>
-                <li><a href="" >Bank/e-wallet</a></li>
-                <li><a href="" >Histori transaksi</a></li>
+                <li><a href="{{ route('umkm.transaction.income') }}">Pemasukan/Pengeluaran</a></li>
+                <li><a href="{{ route('umkm.transaction.transfer') }}">Transfer Antar Rekening</a></li>
+                <li><a href="{{ route('umkm.transaction.upload') }}" >Upload nota (OCR)</a></li>
+                <li><a href="{{ route('umkm.transaction.bank') }}" >Bank/e-wallet</a></li>
+                <li><a href="{{ route('umkm.transaction.history') }}" >Histori transaksi</a></li>
             </ul>
         </li>
 
@@ -59,12 +60,18 @@
         <li>
             <a href="#"><i class='bx  bx-book-alt icon' ></i>   Laporan Keuangan <i class='bx bx-chevron-right icon-right'></i></a>
             <ul class="side-dropdown">
-                <li><a href="">Laporan Periodik</a></li>
+                <li><a href="" >Dashboard Keuangan</a></li>
                 <li><a href="" >Laba rugi</a></li>
-                <li><a href="" >Cashflow & neraca</a></li>
+                <li><a href="" >Neraca</a></li>
+                <li><a href="" >Cashflow</a></li>
+                <li><a href="" >Piutang</a></li>
+                <li><a href="" >Hutang</a></li>
+                <li><a href="" >Rekap Rekening</a></li>
+                <li><a href="" >Penjualan</a></li>
+                <li><a href="" >Stok</a></li>
+                <li><a href="" >Pajak</a></li>
             </ul>
         </li>
-
         <li>
             <a href="#"><i class='bx  bx-trending-down icon'  ></i> Insight & Rekomendasi <i class='bx bx-chevron-right icon-right'></i></a>
             <ul class="side-dropdown">

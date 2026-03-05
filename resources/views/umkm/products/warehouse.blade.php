@@ -220,12 +220,12 @@
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.55);
     z-index: 1000;
     justify-content: center;
     align-items: center;
-    animation: fadeInBg 0.3s ease;
-    backdrop-filter: blur(3px);
+    padding: 20px;
+    backdrop-filter: blur(4px);
 }
 
 .modal.active {
@@ -237,11 +237,13 @@
 =========================== */
 .modal-content {
     background: #fff;
-    padding: 1.8rem;
-    border-radius: 14px;
-    width: 520px;
+    border-radius: 16px;
+    width: 720px;              /* lebih lebar */
     max-width: 95%;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    max-height: 90vh;          /* batasi tinggi */
+    overflow-y: auto;          /* aktifkan scroll */
+    padding: 2rem 2rem 1.5rem;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.25);
     animation: slideUp 0.3s ease;
     position: relative;
 }
@@ -326,6 +328,17 @@
 .modal-body .col-md-6 {
     flex: 1 1 calc(50% - 1rem);
     min-width: 260px;
+}
+
+.modal-content::-webkit-scrollbar {
+    width: 8px;
+}
+.modal-content::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 6px;
+}
+.modal-content::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
 }
 
 /* Form versi grid */
@@ -500,6 +513,62 @@
     font-weight: 500;
 }
 .btn-secondary:hover { background: #ccc; }
+
+.badge-success {
+    background: #16a34a;
+    color: #fff;
+}
+
+/* ===== Section Wrapper ===== */
+.finance-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+}
+
+/* ===== Card Section ===== */
+.finance-card {
+    background: #f9fafb;
+    padding: 1.5rem;
+    border-radius: 14px;
+    border: 1px solid #e5e7eb;
+}
+
+.section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.8rem;
+    color: #374151;
+}
+
+/* ===== Payment Status ===== */
+.payment-status {
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.payment-status.waiting {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.payment-status.success {
+    background: #16a34a;
+    color: white;
+}
+
+.payment-status.warning {
+    background: #f59e0b;
+    color: white;
+}
+
+.payment-status.danger {
+    background: #dc2626;
+    color: white;
+}
 
 @keyframes fadeInBg {
     from { opacity: 0; }
@@ -858,19 +927,68 @@
                     <input type="text" name="supplier_name" id="supplier_name" required placeholder="Masukkan nama supplier">
                 </div>
 
-                <div class="form-group">
-                    <label for="quantity">Jumlah Stok</label>
-                    <input type="number" name="quantity" id="quantity" min="1" required placeholder="Masukkan jumlah stok">
-                </div>
+                <div class="finance-wrapper">
 
-                <div class="form-group">
-                    <label for="min_stock">Stok Minimum</label>
-                    <input type="number" name="min_stock" id="min_stock" value="{{ $product->min_stock ?? 0 }}">
-                </div>
+                    <!-- ====== SECTION STOK ====== -->
+                    <div class="finance-card" style="margin-top:20px">
+                        <h4 class="section-title">📦 Informasi Stok</h4>
 
-                <div class="form-group">
-                    <label for="rack_position">Posisi Rak</label>
-                    <input type="text" name="rack_position" id="rack_position" maxlength="100" placeholder="Misal: Rak A3 / Baris 2">
+                        <div class="form-grid-2col">
+                            <div class="form-group">
+                                <label>Jumlah Stok <span class="required">*</span></label>
+                                <input type="number" name="quantity" id="quantity" min="1" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Stok Minimum</label>
+                                <input type="number" name="min_stock" id="min_stock">
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label>Posisi Rak</label>
+                                <input type="text" name="rack_position" id="rack_position">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ====== SECTION PEMBAYARAN ====== -->
+                    <div class="finance-card">
+                        <h4 class="section-title">💰 Informasi Pembelian</h4>
+
+                        <div class="form-grid-2col">
+                            <div class="form-group">
+                                <label>Harga Satuan (Rp)</label>
+                                <input type="number" name="price" id="price">
+                            </div>
+
+                            <div class="form-group">
+                                <label>Total Harga (Rp)</label>
+                                <input type="text" id="total" readonly>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Dibayar (Rp)</label>
+                                <input type="number" name="paid" id="paid">
+                            </div>
+
+                            <div class="form-group">
+                                <label>Sisa Hutang (Rp)</label>
+                                <input type="text" id="remaining" readonly>
+                            </div>
+
+                            <div class="form-group full-width">
+                                <div id="payment_status_badge" class="payment-status waiting">
+                                    Menunggu Input
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Jatuh Tempo</label>
+                                <input type="date" name="due_date" id="due_date">
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
 
                 <div class="modal-footer">
@@ -1140,6 +1258,42 @@ document.addEventListener("DOMContentLoaded", () => {
     /* ======================= 📦 UPDATE STOK ======================= */
     const stockModal = document.getElementById('stockModal');
     const stockForm = document.getElementById('stockForm');
+    const qtyInput = document.getElementById('quantity');
+    const priceInput = document.getElementById('price');
+    const totalInput = document.getElementById('total');
+    const paidInput = document.getElementById('paid');
+    const remainingInput = document.getElementById('remaining');
+    const statusBadge = document.getElementById('payment_status_badge');
+
+    function calculatePayment() {
+        const qty = parseFloat(qtyInput.value) || 0;
+        const price = parseFloat(priceInput.value) || 0;
+        const paid = parseFloat(paidInput.value) || 0;
+
+        const total = qty * price;
+        const remaining = total - paid;
+
+        totalInput.value = total.toFixed(2);
+        remainingInput.value = remaining.toFixed(2);
+
+        if (remaining <= 0 && total > 0) {
+            statusBadge.textContent = "LUNAS";
+            statusBadge.className = "payment-status success";
+        } else if (paid > 0 && remaining > 0) {
+            statusBadge.textContent = "Sebagian Dibayar";
+            statusBadge.className = "payment-status warning";
+        } else if (total > 0 && paid == 0) {
+            statusBadge.textContent = "Belum Dibayar";
+            statusBadge.className = "payment-status danger";
+        } else {
+            statusBadge.textContent = "Menunggu Input";
+            statusBadge.className = "payment-status waiting";
+        }
+    }
+
+    qtyInput?.addEventListener('input', calculatePayment);
+    priceInput?.addEventListener('input', calculatePayment);
+    paidInput?.addEventListener('input', calculatePayment);
     if (stockModal && stockForm) {
         const closeStockBtns = stockModal.querySelectorAll('.close-btn');
         document.querySelectorAll('.clickable-row').forEach(row => {

@@ -993,30 +993,35 @@ document.getElementById('editIncomeForm')
 
 });
 
-const modal = document.getElementById('editIncomeModal');
+document.addEventListener('DOMContentLoaded', function(){
 
-document.addEventListener('click', function(e){
+    const modal = document.getElementById('editIncomeModal');
 
-    // OPEN
-    if(e.target.closest('.btn-edit-income')){
+    if (!modal) return; // kalau modal tidak ada, hentikan script ini saja
 
-        let btn = e.target.closest('.btn-edit-income');
+    document.addEventListener('click', function(e){
 
-        document.getElementById('edit_id').value = btn.dataset.id;
-        document.getElementById('edit_type').value = btn.dataset.type;
-        document.getElementById('edit_category').value = btn.dataset.category;
-        document.getElementById('edit_account').value = btn.dataset.account;
-        document.getElementById('edit_amount').value = btn.dataset.amount;
-        document.getElementById('edit_date').value = btn.dataset.date;
-        document.getElementById('edit_description').value = btn.dataset.description;
+        const editButton = e.target.closest('.btn-edit-income');
 
-        modal.classList.add('active');
-    }
+        if(editButton){
 
-    // CLOSE
-    if(e.target.classList.contains('close-modal') || e.target === modal){
-        modal.classList.remove('active');
-    }
+            document.getElementById('edit_id').value = editButton.dataset.id;
+            document.getElementById('edit_type').value = editButton.dataset.type;
+            document.getElementById('edit_category').value = editButton.dataset.category;
+            document.getElementById('edit_account').value = editButton.dataset.account;
+            document.getElementById('edit_amount').value = editButton.dataset.amount;
+            document.getElementById('edit_date').value = editButton.dataset.date;
+            document.getElementById('edit_description').value = editButton.dataset.description;
+
+            modal.classList.add('active');
+        }
+
+        if(e.target.classList.contains('close-modal') || e.target === modal){
+            modal.classList.remove('active');
+        }
+
+    });
+
 });
 </script>
 

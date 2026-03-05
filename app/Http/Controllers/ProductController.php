@@ -15,6 +15,7 @@ use App\Models\Transaction;
 use App\Models\Warehouse;
 use App\Models\WarehouseProduct;
 use App\Models\WarehouseTransfer;
+use App\Models\WarehouseStockTransaction;
 use App\Models\TransactionItem;
 use Illuminate\Validation\Rule;
 use Carbon\Carbon;
@@ -1566,103 +1567,140 @@ class ProductController extends Controller
 
     public function updateStock(Request $request)
     {
+        DB::beginTransaction();
+
         try {
-            // 🧩 Jika request JSON
+
             if ($request->isJson()) {
                 $data = $request->json()->all();
                 $request->merge($data);
             }
 
-            // 🧾 Validasi data
+            // ================= VALIDASI =================
             $validated = $request->validate([
                 'warehouse_id'  => 'required|exists:warehouses,id',
-                'product_id'    => 'required|integer|exists:products,id',
-                'supplier_name' => 'required|string',
-                'variation_id'  => 'nullable|integer|exists:product_variations,id',
+                'product_id'    => 'required|exists:products,id',
+                'variation_id'  => 'nullable|exists:product_variations,id',
                 'action_type'   => 'required|in:add,reduce',
                 'quantity'      => 'required|integer|min:1',
+
                 'min_stock'     => 'nullable|integer|min:0',
                 'rack_position' => 'nullable|string|max:100',
+
+                // Keuangan (optional)
+                'price'         => 'nullable|numeric|min:0',
+                'paid'          => 'nullable|numeric|min:0',
+                'supplier_name' => 'nullable|string|max:255',
+                'due_date'      => 'nullable|date',
             ]);
 
-            $productId   = $request->product_id;
-            $variationId = $request->variation_id ?: null;
+            $warehouseId = $validated['warehouse_id'];
+            $productId   = $validated['product_id'];
+            $variationId = $validated['variation_id'] ?? null;
+            $actionType  = $validated['action_type'];
+            $quantity    = $validated['quantity'];
 
-            // 🔍 Ambil data stok di warehouse_products
-            $record = \App\Models\WarehouseProduct::where('warehouse_id', $request->warehouse_id)
-                ->where('product_id', $productId)
-                ->where(function ($q) use ($variationId) {
-                    if ($variationId) $q->where('variation_id', $variationId);
-                    else $q->whereNull('variation_id');
-                })
-                ->first();
+            // ================= HITUNG KEUANGAN =================
+            $price     = 0;
+            $total     = 0;
+            $paid      = 0;
+            $remaining = 0;
 
-            // 🔢 Hitung stok baru
-            if ($record) {
-                $newStock = $record->stock;
+            if ($actionType === 'add') {
 
-                if ($request->action_type === 'add') {
-                    $newStock += $request->quantity;
-                } elseif ($request->action_type === 'reduce') {
-                    if ($record->stock < $request->quantity) {
-                        return response()->json(['success' => false, 'message' => 'Stok tidak mencukupi untuk dikurangi.']);
-                    }
-                    $newStock = max(0, $record->stock - $request->quantity);
+                $price = $validated['price'] ?? 0;
+                $paid  = $validated['paid'] ?? 0;
+
+                $total = $quantity * $price;
+
+                if ($paid > $total) {
+                    throw new \Exception('Jumlah dibayar tidak boleh melebihi total.');
                 }
 
-                // ✏️ Update stok utama
-                $record->update([
-                    'stock'         => $newStock,
-                    'min_stock'     => $request->min_stock ?? $record->min_stock,
-                    'rack_position' => $request->rack_position ?? $record->rack_position,
-                    'supplier_name' => $request->supplier_name ?? $record->supplier_name,
-                ]);
-
-            } else {
-                // 🆕 Jika belum ada data stok (harus add)
-                if ($request->action_type === 'reduce') {
-                    return response()->json(['success' => false, 'message' => 'Tidak dapat mengurangi stok yang belum ada.']);
-                }
-
-                $record = \App\Models\WarehouseProduct::create([
-                    'warehouse_id'  => $request->warehouse_id,
-                    'product_id'    => $productId,
-                    'variation_id'  => $variationId,
-                    'stock'         => $request->quantity,
-                    'min_stock'     => $request->min_stock ?? 0,
-                    'rack_position' => $request->rack_position,
-                    'supplier_name' => $request->supplier_name,
-                    'is_active'     => true,
-                ]);
+                $remaining = $total - $paid;
             }
 
-            // 🧾 Simpan log perubahan stok
-            DB::table('warehouse_stock_logs')->insert([
-                'warehouse_id' => $request->warehouse_id,
+            // ================= AMBIL / BUAT DATA STOCK =================
+            $record = \App\Models\WarehouseProduct::firstOrCreate(
+                [
+                    'warehouse_id' => $warehouseId,
+                    'product_id'   => $productId,
+                    'variation_id' => $variationId,
+                ],
+                [
+                    'stock'         => 0,
+                    'min_stock'     => 0,
+                    'rack_position' => null,
+                    'supplier_name' => null,
+                    'is_active'     => true,
+                ]
+            );
+
+            // ================= UPDATE STOCK =================
+            if ($actionType === 'add') {
+                $record->stock += $quantity;
+            } else {
+                if ($record->stock < $quantity) {
+                    throw new \Exception('Stok tidak mencukupi untuk dikurangi.');
+                }
+                $record->stock -= $quantity;
+            }
+
+            // Update info tambahan
+            $record->min_stock     = $validated['min_stock'] ?? $record->min_stock;
+            $record->rack_position = $validated['rack_position'] ?? $record->rack_position;
+
+            if ($actionType === 'add') {
+                $record->supplier_name = $validated['supplier_name'] ?? $record->supplier_name;
+            }
+
+            $record->save();
+
+            // ================= SIMPAN TRANSAKSI BARU =================
+            \App\Models\WarehouseStockTransaction::create([
+                'warehouse_id' => $warehouseId,
                 'product_id'   => $productId,
                 'variation_id' => $variationId,
-                'action_type'  => $request->action_type,
-                'quantity'     => $request->quantity,
-                'note'         => $request->supplier_name ?? '-',
-                'user_id'      => auth()->id() ?? null,
+                'action_type'  => $actionType,
+                'quantity'     => $quantity,
+                'min_stock'    => $validated['min_stock'] ?? null,
+                'rack_position'=> $validated['rack_position'] ?? null,
+                'price'        => $actionType === 'add' ? $price : null,
+                'total'        => $actionType === 'add' ? $total : null,
+                'paid'         => $actionType === 'add' ? $paid : 0,
+                'remaining'    => $actionType === 'add' ? $remaining : 0,
+                'supplier_name'=> $actionType === 'add' ? $validated['supplier_name'] : null,
+                'due_date'     => $actionType === 'add' ? $validated['due_date'] : null,
+                'idpenginput'  => auth()->id(),
+            ]);
+
+            // ================= LOG (opsional, tetap Anda pakai) =================
+            DB::table('warehouse_stock_logs')->insert([
+                'warehouse_id' => $warehouseId,
+                'product_id'   => $productId,
+                'variation_id' => $variationId,
+                'action_type'  => $actionType,
+                'quantity'     => $quantity,
+                'note'         => $validated['supplier_name'] ?? '-',
+                'user_id'      => auth()->id(),
                 'created_at'   => now(),
                 'updated_at'   => now(),
             ]);
 
+            DB::commit();
+
             return response()->json([
                 'success' => true,
-                'message' => 'Stok berhasil diperbarui dan dicatat dalam log.'
+                'message' => 'Stok & transaksi berhasil disimpan.'
             ]);
 
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Validasi gagal: ' . $e->getMessage()
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+                'message' => $e->getMessage()
             ]);
         }
     }

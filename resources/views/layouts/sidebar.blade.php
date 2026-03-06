@@ -64,7 +64,7 @@
                 <li><a href="" >Laba rugi</a></li>
                 <li><a href="" >Neraca</a></li>
                 <li><a href="" >Cashflow</a></li>
-                <li><a href="" >Piutang</a></li>
+                <li><a href="{{ route('umkm.report.piutang') }}" class="{{ request()->routeIs('umkm.report.piutang') ? 'active' : '' }}" >Piutang</a></li>
                 <li><a href="" >Hutang</a></li>
                 <li><a href="" >Rekap Rekening</a></li>
                 <li><a href="{{ route('umkm.report.sales') }}" class="{{ request()->routeIs('umkm.report.sales') ? 'active' : '' }}">Penjualan</a></li>

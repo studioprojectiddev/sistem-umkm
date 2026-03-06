@@ -7,6 +7,7 @@ use App\Http\Controllers\posController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\KasirController;
 use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\ReportPenjualanController;
 
 Route::get('/', function () {
     return redirect()->route('login');
@@ -80,6 +81,10 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::get('/stock/summary', [PosController::class, 'summary']);
     Route::get('/api/report/products', [PosController::class, 'productReport']);
     Route::get('/umkm/pos/receipt/{id}', [PosController::class, 'receipt'])->name('umkm.pos.receipt');
+
+    Route::get('/umkm/laporan-penjualan', [ReportPenjualanController::class, 'index'])->name('umkm.report.sales');
+    Route::get('/umkm/laporan-penjualan/export-excel', [ReportPenjualanController::class, 'exportExcel'])->name('umkm.report.sales.export_excel');
+    Route::get('/umkm/laporan-penjualan/export-pdf', [ReportPenjualanController::class, 'exportPdf'])->name('umkm.report.sales.export_pdf');
 
     Route::post('/umkm/pos/set-outlet', [PosController::class, 'setOutlet']);
 

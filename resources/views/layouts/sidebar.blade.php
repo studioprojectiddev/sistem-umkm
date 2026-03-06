@@ -67,7 +67,7 @@
                 <li><a href="" >Piutang</a></li>
                 <li><a href="" >Hutang</a></li>
                 <li><a href="" >Rekap Rekening</a></li>
-                <li><a href="" >Penjualan</a></li>
+                <li><a href="{{ route('umkm.report.sales') }}" class="{{ request()->routeIs('umkm.report.sales') ? 'active' : '' }}">Penjualan</a></li>
                 <li><a href="" >Stok</a></li>
                 <li><a href="" >Pajak</a></li>
             </ul>

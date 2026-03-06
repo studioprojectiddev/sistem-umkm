@@ -34,11 +34,15 @@
             <div class="card-body" style="padding: 20px;">
                 <form method="GET" class="form-row" style="gap:12px; align-items:flex-end; flex-wrap:wrap;">
                     <div class="form-group" style="flex:1; min-width:220px;">
-                        <label for="start_date">Tanggal awal</label>
+                        <label for="start_date" style="display:flex; align-items:center; flex-direction:row-reverse">
+                            Tanggal awal
+                        </label>
                         <input type="date" id="start_date" name="start_date" value="{{ $start }}" class="form-control">
                     </div>
                     <div class="form-group" style="flex:1; min-width:220px;">
-                        <label for="end_date">Tanggal akhir</label>
+                        <label for="end_date" style="display:flex; align-items:center; flex-direction:row-reverse">
+                            Tanggal akhir
+                        </label>
                         <input type="date" id="end_date" name="end_date" value="{{ $end }}" class="form-control">
                     </div>
                     <div class="form-group" style="flex:1; min-width:220px;">
@@ -54,7 +58,9 @@
                         </select>
                     </div>
                     <div class="form-group" style="flex:1; min-width:220px;">
-                        <label for="status">Status Transaksi</label>
+                        <label for="status" style="display:flex; align-items:center; flex-direction:row-reverse">
+                            Status Transaksi
+                        </label>
                         <select id="status" name="status" class="form-control">
                             <option value="">Semua Status</option>
                             @foreach(['pending','completed','cancelled','refunded'] as $st)
@@ -63,7 +69,9 @@
                         </select>
                     </div>
                     <div class="form-group" style="flex:1; min-width:220px;">
-                        <label for="per_page">Show entries</label>
+                        <label for="per_page" style="display:flex; align-items:center; flex-direction:row-reverse">
+                            Show entries
+                        </label>
                         <select id="per_page" name="per_page" class="form-control">
                             @foreach(['10','25','50','100','all'] as $option)
                                 <option value="{{ $option }}" {{ (string) $perPage === $option ? 'selected' : '' }}>{{ $option === 'all' ? 'All' : $option }}</option>

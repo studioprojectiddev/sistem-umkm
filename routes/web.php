@@ -9,6 +9,7 @@ use App\Http\Controllers\KasirController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\ReportPenjualanController;
 use App\Http\Controllers\LaporanPiutangController;
+use App\Http\Controllers\LaporanRekapRekeningController;
 
 Route::get('/', function () {
     return redirect()->route('login');
@@ -90,6 +91,10 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::get('/umkm/laporan-piutang', [LaporanPiutangController::class, 'index'])->name('umkm.report.piutang');
     Route::get('/umkm/laporan-piutang/export-excel', [LaporanPiutangController::class, 'exportExcel'])->name('umkm.report.piutang.export_excel');
     Route::get('/umkm/laporan-piutang/export-pdf', [LaporanPiutangController::class, 'exportPdf'])->name('umkm.report.piutang.export_pdf');
+
+    Route::get('/umkm/laporan-rekap-rekening', [LaporanRekapRekeningController::class, 'index'])->name('umkm.report.rekap_rekening');
+    Route::get('/umkm/laporan-rekap-rekening/export-excel', [LaporanRekapRekeningController::class, 'exportExcel'])->name('umkm.report.rekap_rekening.export_excel');
+    Route::get('/umkm/laporan-rekap-rekening/export-pdf', [LaporanRekapRekeningController::class, 'exportPdf'])->name('umkm.report.rekap_rekening.export_pdf');
 
     Route::post('/umkm/pos/set-outlet', [PosController::class, 'setOutlet']);
 

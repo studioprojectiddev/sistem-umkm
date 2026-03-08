@@ -14,6 +14,11 @@
 <style>
     /* ================= MODAL CUSTOM ================= */
 
+.sidebar{
+    position: relative;
+    z-index: 10;
+}
+
 .custom-modal {
     position: fixed;
     inset: 0;
@@ -21,11 +26,12 @@
     display: none;
     align-items: center;
     justify-content: center;
-    z-index: 9999;
+    z-index: 1050;
 }
 
 .custom-modal.active {
     display: flex;
+    pointer-events: auto;
 }
 
 .custom-modal-content {
@@ -981,6 +987,8 @@ document.getElementById('editIncomeForm')
 
         // 🔴 Tutup modal dulu
         modal.classList.remove('active');
+        modal.style.display = 'none';
+        document.body.style.overflow = 'auto';
 
         if(data.status === 'success'){
 
@@ -1016,11 +1024,13 @@ document.getElementById('editIncomeForm')
 
 });
 
-const modal = document.getElementById('editIncomeModal');
+
 
 document.addEventListener('DOMContentLoaded', function(){
 
-    if (!modal) return; // kalau modal tidak ada, hentikan script ini saja
+    const modal = document.getElementById('editIncomeModal');
+    
+    if (!modal) return;
 
     document.addEventListener('click', function(e){
 
@@ -1037,10 +1047,14 @@ document.addEventListener('DOMContentLoaded', function(){
             document.getElementById('edit_description').value = editButton.dataset.description;
 
             modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
         }
 
         if(e.target.classList.contains('close-modal') || e.target === modal){
+
             modal.classList.remove('active');
+            document.body.style.overflow = 'auto';
+
         }
 
     });

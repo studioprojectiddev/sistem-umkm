@@ -18,6 +18,7 @@ class WarehouseProduct extends Model
         'reserved',
         'min_stock',
         'rack_position',
+        'avg_cost',
         'is_active',
     ];
 

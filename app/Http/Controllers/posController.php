@@ -340,18 +340,23 @@ class PosController extends Controller
         ]);
 
         DB::beginTransaction();
+
         try {
+
             $subtotal = collect($cart)->sum('subtotal');
             $total = $subtotal;
 
             $uangDiterima = (int) $request->uang_diterima;
+
             if ($uangDiterima < 0) {
                 throw new \Exception('Jumlah pembayaran tidak valid');
             }
+
             $kembalian = max(0, $uangDiterima - $total);
             $isUtang = $uangDiterima < $total;
 
             $account = Account::find($request->account_id);
+
             $method = match($account->type) {
                 'cash' => 'cash',
                 'bank' => 'bank_transfer',
@@ -359,17 +364,19 @@ class PosController extends Controller
                 default => 'cash'
             };
 
-            // ✅ TRANSAKSI DENGAN OUTLET
+            // ===============================
+            // CREATE TRANSACTION
+            // ===============================
             $transaction = Transaction::create([
                 'invoice_number'   => 'INV' . time(),
                 'transaction_type' => 'sale',
                 'idpenginput'      => auth()->id(),
                 'user_id'          => auth()->id(),
-                'warehouse_id'     => $warehouseId, // ⬅️ PENTING
+                'warehouse_id'     => $warehouseId,
                 'subtotal'         => $subtotal,
                 'total'            => $total,
                 'payment_status'   => $isUtang ? 'unpaid' : 'paid',
-                'payment_method'   => $method, 
+                'payment_method'   => $method,
                 'account_id'       => $account->id,
                 'uang_diterima'    => $uangDiterima,
                 'kembalian'        => $kembalian,
@@ -378,60 +385,83 @@ class PosController extends Controller
                 'status'           => 'completed',
             ]);
 
+            // ===============================
+            // LOOP CART
+            // ===============================
             foreach ($cart as $item) {
 
                 $qty = (int) ($item['quantity'] ?? 0);
+
                 if ($qty <= 0) {
                     throw new \Exception('Quantity tidak valid');
                 }
-            
+
                 $productId   = null;
                 $variationId = null;
-            
+
                 if ($item['type'] === 'variation') {
+
                     $variationId = $item['id'];
                     $variation   = ProductVariation::findOrFail($variationId);
                     $productId   = $variation->product_id;
+
                 } else {
+
                     $productId = $item['id'];
+
                 }
-            
+
+                // ===============================
+                // AMBIL STOK GUDANG
+                // ===============================
+                $wpQuery = DB::table('warehouse_products')
+                    ->where('warehouse_id', $warehouseId)
+                    ->where('product_id', $productId);
+
+                $variationId
+                    ? $wpQuery->where('variation_id', $variationId)
+                    : $wpQuery->whereNull('variation_id');
+
+                $wp = $wpQuery->lockForUpdate()->first();
+
+                if (!$wp || $wp->stock < $qty) {
+                    throw new \Exception('Stok tidak mencukupi saat checkout');
+                }
+
+                // ===============================
+                // AMBIL AVERAGE COST
+                // ===============================
+                $costPrice = $wp->avg_cost ?? 0;
+                $totalCost = $costPrice * $qty;
+
+                // ===============================
+                // INSERT TRANSACTION ITEM
+                // ===============================
                 TransactionItem::create([
                     'transaction_id' => $transaction->id,
                     'product_id'     => $productId,
-                    'variation_id'   => $variationId, // ✅ aman (nullable)
+                    'variation_id'   => $variationId,
                     'quantity'       => $qty,
                     'price'          => $item['price'],
+                    'cost_price'     => $costPrice,
+                    'total_cost'     => $totalCost,
                     'discount'       => $item['discount'] ?? 0,
                     'subtotal'       => $item['subtotal'],
                     'unit'           => $item['unit'] ?? 'pcs',
                     'idpenginput'    => auth()->id(),
                 ]);
-            
-                // 🔻 potong stok outlet aktif
-                $wpQuery = DB::table('warehouse_products')
-                    ->where('warehouse_id', $warehouseId)
-                    ->where('product_id', $productId);
-            
-                $variationId
-                    ? $wpQuery->where('variation_id', $variationId)
-                    : $wpQuery->whereNull('variation_id');
-            
-                $wp = $wpQuery->first();
-            
-                if (!$wp || $wp->stock < $qty) {
-                    throw new \Exception('Stok tidak mencukupi saat checkout');
-                }
-            
+
+                // ===============================
+                // POTONG STOK
+                // ===============================
                 DB::table('warehouse_products')
                     ->where('id', $wp->id)
                     ->decrement('stock', $qty);
-            }        
-            
-            // ==============================
-            // 🔥 AUTO CREATE CASHFLOW
-            // ==============================
+            }
 
+            // ===============================
+            // AUTO CASHFLOW
+            // ===============================
             $salesCategory = CashflowCategory::firstOrCreate(
                 [
                     'name' => 'Penjualan',
@@ -459,13 +489,15 @@ class PosController extends Controller
                     'description' => 'Penjualan POS #' . $transaction->invoice_number,
                     'reference_type' => 'pos',
                     'reference_id' => $transaction->id,
-                    'created_by' => auth()->id(),   // 🔥 INI WAJIB
+                    'created_by' => auth()->id(),
                 ]);
             }
 
             DB::commit();
 
-            // ✅ HANYA HAPUS CART OUTLET INI
+            // ===============================
+            // CLEAR CART
+            // ===============================
             session()->forget("cart.$warehouseId");
 
             return response()->json([
@@ -476,7 +508,9 @@ class PosController extends Controller
             ]);
 
         } catch (\Exception $e) {
+
             DB::rollBack();
+
             return response()->json([
                 'status' => 'error',
                 'message' => $e->getMessage()

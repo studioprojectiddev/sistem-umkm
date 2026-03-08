@@ -18,6 +18,7 @@ use App\Models\WarehouseTransfer;
 use App\Models\WarehouseStockTransaction;
 use App\Models\TransactionItem;
 use App\Models\Account;
+use App\Models\CashFlow;
 use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 use Picqer\Barcode\BarcodeGeneratorPNG;
@@ -1608,7 +1609,7 @@ class ProductController extends Controller
             $remaining = 0;
 
             $paymentStatus = 'unpaid';
-            $categoryId    = 3; // default hutang
+            $categoryId    = 3;
 
             if ($actionType === 'add') {
 
@@ -1624,24 +1625,19 @@ class ProductController extends Controller
                 $remaining = $total - $paid;
 
                 if ($remaining <= 0 && $total > 0) {
-
                     $paymentStatus = 'paid';
-                    $categoryId = 1; // lunas
-
+                    $categoryId = 1;
                 } elseif ($paid > 0 && $remaining > 0) {
-
                     $paymentStatus = 'partial';
-                    $categoryId = 2; // sebagian bayar
-
+                    $categoryId = 2;
                 } else {
-
                     $paymentStatus = 'unpaid';
-                    $categoryId = 3; // hutang
+                    $categoryId = 3;
                 }
             }
 
-            // ================= UPDATE MASTER STOCK =================
-            $record = \App\Models\WarehouseProduct::firstOrCreate(
+            // ================= AMBIL DATA STOK =================
+            $record = WarehouseProduct::firstOrCreate(
                 [
                     'warehouse_id' => $warehouseId,
                     'product_id'   => $productId,
@@ -1649,13 +1645,36 @@ class ProductController extends Controller
                 ],
                 [
                     'stock' => 0,
+                    'avg_cost' => 0,
                     'is_active' => true
                 ]
             );
 
+            $oldQty = $record->stock;
+            $oldAvg = $record->avg_cost ?? 0;
+
+            $avgBefore = $oldAvg;
+            $avgAfter  = $oldAvg;
+
+            // ================= UPDATE STOCK =================
             if ($actionType === 'add') {
 
-                $record->stock += $quantity;
+                $newQty = $oldQty + $quantity;
+
+                if ($newQty > 0) {
+
+                    $avgAfter = (
+                        ($oldQty * $oldAvg) +
+                        ($quantity * $price)
+                    ) / $newQty;
+
+                } else {
+
+                    $avgAfter = $price;
+                }
+
+                $record->stock = $newQty;
+                $record->avg_cost = $avgAfter;
 
             } else {
 
@@ -1664,12 +1683,15 @@ class ProductController extends Controller
                 }
 
                 $record->stock -= $quantity;
+
+                // average tidak berubah
+                $avgAfter = $oldAvg;
             }
 
             $record->min_stock     = $validated['min_stock'] ?? $record->min_stock;
             $record->rack_position = $validated['rack_position'] ?? $record->rack_position;
-            $record->save();
 
+            $record->save();
 
             // ================= GENERATE TRANSACTION CODE =================
             $today = now()->format('Ymd');
@@ -1681,7 +1703,6 @@ class ProductController extends Controller
             $codeNumber = str_pad($countToday + 1, 4, '0', STR_PAD_LEFT);
 
             $transactionCode = 'PO-' . $today . '-' . $codeNumber;
-
 
             // ================= INSERT STOCK LOG =================
             DB::table('warehouse_stock_logs')->insert([
@@ -1696,6 +1717,10 @@ class ProductController extends Controller
                 'transaction_code' => $transactionCode,
 
                 'price' => $actionType === 'add' ? $price : null,
+
+                'avg_cost_before' => $avgBefore,
+                'avg_cost_after'  => $avgAfter,
+
                 'total' => $actionType === 'add' ? $total : null,
                 'paid'  => $actionType === 'add' ? $paid : 0,
                 'remaining' => $actionType === 'add' ? $remaining : 0,
@@ -1715,22 +1740,18 @@ class ProductController extends Controller
                 'updated_at' => now()
             ]);
 
-
             // ================= INSERT CASHFLOW =================
             if ($actionType === 'add' && $paid > 0) {
 
-                \App\Models\CashFlow::create([
+                CashFlow::create([
 
                     'type' => 'expense',
-
                     'category_id' => $categoryId,
-
                     'amount' => $paid,
 
                     'description' => $validated['note'] ?? 'Pembelian stok ' . $transactionCode,
 
                     'account_id' => $validated['account_id'] ?? null,
-
                     'transaction_date' => $validated['transaction_date'] ?? now(),
 
                     'created_by' => auth()->id()
@@ -1769,8 +1790,9 @@ class ProductController extends Controller
         DB::beginTransaction();
 
         try {
+
             /* =====================================================
-            * 1️⃣ Ambil stok gudang asal
+            * 1️⃣ Ambil stok + avg_cost gudang asal
             * ===================================================== */
             $fromStock = DB::table('warehouse_products')
                 ->where('warehouse_id', $validated['from_warehouse_id'])
@@ -1780,18 +1802,19 @@ class ProductController extends Controller
                     fn ($q) => $q->where('variation_id', $validated['variation_id']),
                     fn ($q) => $q->whereNull('variation_id')
                 )
-                ->value('stock');
+                ->first(['stock','avg_cost']);
 
-            $fromStock = $fromStock ?? 0;
+            $stockAvailable = $fromStock->stock ?? 0;
+            $avgCost = $fromStock->avg_cost ?? 0;
 
             /* =====================================================
             * 2️⃣ Validasi stok cukup
             * ===================================================== */
-            if ($validated['quantity'] > $fromStock) {
+            if ($validated['quantity'] > $stockAvailable) {
                 DB::rollBack();
                 return response()->json([
                     'success' => false,
-                    'message' => "Stok tidak mencukupi. Stok tersedia: {$fromStock}",
+                    'message' => "Stok tidak mencukupi. Stok tersedia: {$stockAvailable}",
                 ], 422);
             }
 
@@ -1831,26 +1854,33 @@ class ProductController extends Controller
                     fn ($q) => $q->where('variation_id', $validated['variation_id']),
                     fn ($q) => $q->whereNull('variation_id')
                 )
-                ->exists();
+                ->first();
 
             if ($existsToWarehouse) {
-                // UPDATE stok
+
                 DB::table('warehouse_products')
-                    ->where('warehouse_id', $validated['to_warehouse_id'])
-                    ->where('product_id', $validated['product_id'])
-                    ->when(
-                        $validated['variation_id'],
-                        fn ($q) => $q->where('variation_id', $validated['variation_id']),
-                        fn ($q) => $q->whereNull('variation_id')
-                    )
+                    ->where('id', $existsToWarehouse->id)
                     ->increment('stock', $validated['quantity']);
+
+                // jika avg_cost kosong di gudang tujuan
+                if (!$existsToWarehouse->avg_cost || $existsToWarehouse->avg_cost == 0) {
+
+                    DB::table('warehouse_products')
+                        ->where('id', $existsToWarehouse->id)
+                        ->update([
+                            'avg_cost' => $avgCost
+                        ]);
+                }
+
             } else {
-                // INSERT stok baru
+
                 DB::table('warehouse_products')->insert([
                     'warehouse_id' => $validated['to_warehouse_id'],
                     'product_id'   => $validated['product_id'],
                     'variation_id' => $validated['variation_id'] ?? null,
                     'stock'        => $validated['quantity'],
+                    'avg_cost'     => $avgCost, // 🔥 INI YANG PENTING
+                    'is_active'    => true
                 ]);
             }
 
@@ -1863,6 +1893,7 @@ class ProductController extends Controller
             ]);
 
         } catch (\Throwable $e) {
+
             DB::rollBack();
 
             return response()->json([
@@ -1872,18 +1903,17 @@ class ProductController extends Controller
         }
     }
 
-    public function updateTransfer(Request $request, $id)
-    {
-        $transfer = WarehouseTransfer::findOrFail($id);
-        $transfer->update([
-            'from_warehouse_id' => $request->from_warehouse_id,
-            'to_warehouse_id'   => $request->to_warehouse_id,
-            'product_id'        => $request->product_id,
-            'variation_id'      => $request->variation_id,
-            'quantity'          => $request->quantity,
-        ]);
-
-        return response()->json(['success' => true]);
+    public function updateTransfer(Request $request, $id) { 
+    
+        $transfer = WarehouseTransfer::findOrFail($id); 
+        $transfer->update([ 
+            'from_warehouse_id' => $request->from_warehouse_id, 
+            'to_warehouse_id' => $request->to_warehouse_id, 
+            'product_id' => $request->product_id, 
+            'variation_id' => $request->variation_id, 
+            'quantity' => $request->quantity, 
+        ]); 
+        return response()->json(['success' => true]); 
     }
 
     public function deleteTransfer($id)

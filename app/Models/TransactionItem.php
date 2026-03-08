@@ -18,6 +18,8 @@ class TransactionItem extends Model
         'price',
         'discount',
         'subtotal',
+        'cost_price',
+        'total_cost',
         'unit'
     ];
 

@@ -9,41 +9,48 @@ use App\Models\CashFlow;
 use App\Models\Account;
 use App\Models\CashflowCategory;
 use App\Models\CashflowClosing;
+use App\Models\AccountTransfer;
+use App\Models\AccountOpening;
 use App\Exports\CashflowExport;
 use Maatwebsite\Excel\Facades\Excel;
 
 class TransactionController extends Controller
 {
-    public function income(Request $request){
+    public function income(Request $request)
+    {
+        $month = $request->month;
+        $year  = $request->year ?? now()->year;
+        $type  = $request->type;
+
         $query = CashFlow::query();
 
-        // 🔹 Filter bulan
-        if ($request->month) {
-            $query->whereMonth('transaction_date', $request->month);
+        // ================= FILTER =================
+
+        if ($month) {
+            $query->whereMonth('transaction_date', $month);
         }
 
-        // 🔹 Filter tahun
-        if ($request->year) {
-            $query->whereYear('transaction_date', $request->year);
+        if ($year) {
+            $query->whereYear('transaction_date', $year);
         }
 
-        // 🔹 Filter tipe
-        if ($request->type) {
-            $query->where('type', $request->type);
+        if ($type) {
+            $query->where('type', $type);
         }
 
         $cashflows = $query->orderByDesc('transaction_date')->paginate(20);
 
-        $totalIncome = $query->clone()->where('type','income')->sum('amount');
-        $totalExpense = $query->clone()->where('type','expense')->sum('amount');
+        $totalIncome = (clone $query)->where('type','income')->sum('amount');
+        $totalExpense = (clone $query)->where('type','expense')->sum('amount');
 
-        // 🔹 Grafik 12 bulan
+        // ================= GRAFIK CASHFLOW =================
+
         $rawMonthly = CashFlow::selectRaw("
             EXTRACT(MONTH FROM transaction_date) as month,
             SUM(CASE WHEN type='income' THEN amount ELSE 0 END) as income,
             SUM(CASE WHEN type='expense' THEN amount ELSE 0 END) as expense
         ")
-        ->whereYear('transaction_date', now()->year)
+        ->when($year, fn($q)=>$q->whereYear('transaction_date',$year))
         ->groupByRaw("EXTRACT(MONTH FROM transaction_date)")
         ->get()
         ->keyBy(fn($m)=> (int)$m->month);
@@ -58,51 +65,48 @@ class TransactionController extends Controller
             ]);
         }
 
-        // 🔹 Donut Chart - Pengeluaran per Kategori
-        $expenseByCategory = CashFlow::where('cash_flows.type','expense')
-        ->whereYear('transaction_date', now()->year)
-        ->join('cashflow_categories','cash_flows.category_id','=','cashflow_categories.id')
-        ->select(
-            'cashflow_categories.name as category',
-            DB::raw('SUM(cash_flows.amount) as total')
-        )
-        ->groupBy('cashflow_categories.name')
-        ->orderByDesc('total')
-        ->get();
+        // ================= DONUT KATEGORI =================
 
-        // 🔹 Bulan ini
+        $expenseByCategory = CashFlow::where('cash_flows.type','expense')
+            ->when($year, fn($q)=>$q->whereYear('transaction_date',$year))
+            ->when($month, fn($q)=>$q->whereMonth('transaction_date',$month))
+            ->join('cashflow_categories','cash_flows.category_id','=','cashflow_categories.id')
+            ->select(
+                'cashflow_categories.name as category',
+                DB::raw('SUM(cash_flows.amount) as total')
+            )
+            ->groupBy('cashflow_categories.name')
+            ->orderByDesc('total')
+            ->get();
+
+        // ================= PERBANDINGAN BULAN =================
+
         $currentMonth = now()->month;
         $currentYear  = now()->year;
 
-        // 🔹 Bulan lalu
         $lastMonth = now()->subMonth()->month;
         $lastMonthYear = now()->subMonth()->year;
 
-        // Income bulan ini
         $incomeCurrent = CashFlow::where('type','income')
             ->whereMonth('transaction_date',$currentMonth)
             ->whereYear('transaction_date',$currentYear)
             ->sum('amount');
 
-        // Income bulan lalu
         $incomeLast = CashFlow::where('type','income')
             ->whereMonth('transaction_date',$lastMonth)
             ->whereYear('transaction_date',$lastMonthYear)
             ->sum('amount');
 
-        // Expense bulan ini
         $expenseCurrent = CashFlow::where('type','expense')
             ->whereMonth('transaction_date',$currentMonth)
             ->whereYear('transaction_date',$currentYear)
             ->sum('amount');
 
-        // Expense bulan lalu
         $expenseLast = CashFlow::where('type','expense')
             ->whereMonth('transaction_date',$lastMonth)
             ->whereYear('transaction_date',$lastMonthYear)
             ->sum('amount');
 
-        // Hitung persen perubahan
         $incomeGrowth = $incomeLast > 0
             ? (($incomeCurrent - $incomeLast) / $incomeLast) * 100
             : 0;
@@ -111,44 +115,37 @@ class TransactionController extends Controller
             ? (($expenseCurrent - $expenseLast) / $expenseLast) * 100
             : 0;
 
+        // ================= SALDO PER REKENING =================
+
         $accounts = Account::all();
 
-        $accountBalances = Account::with('cashflows')->get()->map(function($acc){
+        $accountBalances = $accounts->map(function($acc) use ($month,$year){
 
-            $currentMonth = now()->month;
-            $currentYear  = now()->year;
-
-            // 🔹 Ambil opening balance bulan ini
             $opening = \App\Models\AccountOpening::where('account_id',$acc->id)
-                ->where('month',$currentMonth)
-                ->where('year',$currentYear)
+                ->where('month',$month ?? now()->month)
+                ->where('year',$year ?? now()->year)
                 ->value('opening_balance');
 
-            // Kalau belum ada opening (berarti belum pernah closing)
             $opening = $opening ?? $acc->initial_balance;
 
-            // Income bulan ini
-            $income = $acc->cashflows
+            $income = CashFlow::where('account_id',$acc->id)
                 ->where('type','income')
-                ->whereBetween('transaction_date',[
-                    now()->startOfMonth(),
-                    now()->endOfMonth()
-                ])
+                ->when($month, fn($q)=>$q->whereMonth('transaction_date',$month))
+                ->when($year, fn($q)=>$q->whereYear('transaction_date',$year))
                 ->sum('amount');
 
-            // Expense bulan ini
-            $expense = $acc->cashflows
+            $expense = CashFlow::where('account_id',$acc->id)
                 ->where('type','expense')
-                ->whereBetween('transaction_date',[
-                    now()->startOfMonth(),
-                    now()->endOfMonth()
-                ])
+                ->when($month, fn($q)=>$q->whereMonth('transaction_date',$month))
+                ->when($year, fn($q)=>$q->whereYear('transaction_date',$year))
                 ->sum('amount');
 
             $acc->balance = $opening + $income - $expense;
 
             return $acc;
         });
+
+        // ================= DATA TAMBAHAN =================
 
         $categories = CashflowCategory::where('is_active',true)->get();
 
@@ -173,6 +170,16 @@ class TransactionController extends Controller
         ));
     }
 
+    private function isMonthLocked($date)
+    {
+        $month = \Carbon\Carbon::parse($date)->month;
+        $year  = \Carbon\Carbon::parse($date)->year;
+
+        return \App\Models\CashflowClosing::where('month',$month)
+            ->where('year',$year)
+            ->exists();
+    }
+
     public function store_income(Request $request)
     {
         $request->validate([
@@ -183,8 +190,8 @@ class TransactionController extends Controller
             'transaction_date'=>'required|date'
         ]);
 
-        if ($this->isLocked($request->transaction_date)) {
-            return back()->with('error','Bulan ini sudah dikunci. Tidak bisa tambah transaksi.');
+        if ($this->isMonthLocked($request->transaction_date)) {
+            return back()->with('error','Bulan ini sudah di closing dan tidak bisa diubah.');
         }
 
         CashFlow::create([
@@ -204,8 +211,8 @@ class TransactionController extends Controller
     {
         $cashflow = CashFlow::findOrFail($id);
 
-        if ($this->isLocked($cashflow->transaction_date)) {
-            return back()->with('error','Bulan ini sudah dikunci. Tidak bisa hapus.');
+        if ($this->isMonthLocked($cashflow->transaction_date)) {
+            return back()->with('error','Data bulan ini sudah di closing.');
         }
 
         $cashflow->delete();
@@ -254,12 +261,21 @@ class TransactionController extends Controller
     public function closeMonth(Request $request)
     {
         $request->validate([
-            'month'=>'required',
-            'year'=>'required'
+            'month'=>'required|integer|min:1|max:12',
+            'year'=>'required|integer'
         ]);
 
         $month = $request->month;
         $year  = $request->year;
+
+        // 🔒 Cegah double closing
+        $alreadyClosed = CashflowClosing::where('month',$month)
+            ->where('year',$year)
+            ->exists();
+
+        if($alreadyClosed){
+            return back()->with('warning','Bulan ini sudah pernah dikunci.');
+        }
 
         DB::transaction(function() use ($month,$year){
 
@@ -312,12 +328,21 @@ class TransactionController extends Controller
                 // Hitung bulan berikutnya
                 $nextDate = \Carbon\Carbon::create($year,$month,1)->addMonth();
 
-                AccountOpening::create([
-                    'account_id'=>$acc->id,
-                    'month'=>$nextDate->month,
-                    'year'=>$nextDate->year,
-                    'opening_balance'=>$endingBalance
-                ]);
+                // 🔒 Cegah duplicate opening balance
+                $openingExists = AccountOpening::where('account_id',$acc->id)
+                    ->where('month',$nextDate->month)
+                    ->where('year',$nextDate->year)
+                    ->exists();
+
+                if(!$openingExists){
+                    AccountOpening::create([
+                        'account_id'=>$acc->id,
+                        'month'=>$nextDate->month,
+                        'year'=>$nextDate->year,
+                        'opening_balance'=>$endingBalance
+                    ]);
+                }
+
             }
 
         });
@@ -365,15 +390,15 @@ class TransactionController extends Controller
         return back()->with('success','Transfer berhasil');
     }
 
-    private function isLocked($date)
-    {
-        $month = \Carbon\Carbon::parse($date)->month;
-        $year  = \Carbon\Carbon::parse($date)->year;
+    // private function isLocked($date)
+    // {
+    //     $month = \Carbon\Carbon::parse($date)->month;
+    //     $year  = \Carbon\Carbon::parse($date)->year;
 
-        return \App\Models\CashflowClosing::where('month',$month)
-            ->where('year',$year)
-            ->exists();
-    }
+    //     return \App\Models\CashflowClosing::where('month',$month)
+    //         ->where('year',$year)
+    //         ->exists();
+    // }
 
     public function export_income(Request $request)
     {
@@ -390,17 +415,37 @@ class TransactionController extends Controller
     {
         $cashflow = CashFlow::findOrFail($id);
 
-        $cashflow->update([
-            'type' => $request->type,
-            'category_id' => $request->category_id,
-            'account_id' => $request->account_id,
-            'amount' => $request->amount,
-            'transaction_date' => $request->transaction_date,
-            'description' => $request->description,
+        // cek apakah transaksi lama sudah di lock
+        if ($this->isMonthLocked($cashflow->transaction_date)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Bulan ini sudah di closing dan tidak bisa diubah.'
+            ]);
+        }
+
+        // validasi
+        $validated = $request->validate([
+            'type' => 'required|in:income,expense',
+            'category_id' => 'required|exists:cashflow_categories,id',
+            'account_id' => 'required|exists:accounts,id',
+            'amount' => 'required|numeric|min:1',
+            'transaction_date' => 'required|date',
+            'description' => 'nullable|string'
         ]);
 
+        // cek apakah tanggal baru masuk bulan yang sudah di lock
+        if ($this->isMonthLocked($validated['transaction_date'])) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Tanggal yang dipilih berada pada bulan yang sudah di closing.'
+            ]);
+        }
+
+        $cashflow->update($validated);
+
         return response()->json([
-            'status' => 'success'
+            'status' => 'success',
+            'message' => 'Transaksi berhasil diperbarui.'
         ]);
     }
 

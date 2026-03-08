@@ -17,6 +17,7 @@ use App\Models\WarehouseProduct;
 use App\Models\WarehouseTransfer;
 use App\Models\WarehouseStockTransaction;
 use App\Models\TransactionItem;
+use App\Models\Account;
 use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 use Picqer\Barcode\BarcodeGeneratorPNG;
@@ -1464,6 +1465,8 @@ class ProductController extends Controller
             }
         }
 
+        $accounts = Account::all();
+
         // === 7️⃣ Return ke view ===
         return view('umkm.products.warehouse', compact(
             'warehouses',
@@ -1472,7 +1475,8 @@ class ProductController extends Controller
             'variationProducts',
             'warehouses_store',
             'warehouses_detail',
-            'transfers'
+            'transfers',
+            'accounts'
         ));
     }
     
@@ -1571,12 +1575,7 @@ class ProductController extends Controller
 
         try {
 
-            if ($request->isJson()) {
-                $data = $request->json()->all();
-                $request->merge($data);
-            }
-
-            // ================= VALIDASI =================
+            // ================= VALIDATION =================
             $validated = $request->validate([
                 'warehouse_id'  => 'required|exists:warehouses,id',
                 'product_id'    => 'required|exists:products,id',
@@ -1587,11 +1586,13 @@ class ProductController extends Controller
                 'min_stock'     => 'nullable|integer|min:0',
                 'rack_position' => 'nullable|string|max:100',
 
-                // Keuangan (optional)
                 'price'         => 'nullable|numeric|min:0',
                 'paid'          => 'nullable|numeric|min:0',
-                'supplier_name' => 'nullable|string|max:255',
+                'note'          => 'nullable|string|max:255',
                 'due_date'      => 'nullable|date',
+
+                'account_id'    => 'nullable|exists:accounts,id',
+                'transaction_date' => 'nullable|date',
             ]);
 
             $warehouseId = $validated['warehouse_id'];
@@ -1600,11 +1601,14 @@ class ProductController extends Controller
             $actionType  = $validated['action_type'];
             $quantity    = $validated['quantity'];
 
-            // ================= HITUNG KEUANGAN =================
+            // ================= FINANCE CALCULATION =================
             $price     = 0;
             $total     = 0;
             $paid      = 0;
             $remaining = 0;
+
+            $paymentStatus = 'unpaid';
+            $categoryId    = 3; // default hutang
 
             if ($actionType === 'add') {
 
@@ -1618,9 +1622,25 @@ class ProductController extends Controller
                 }
 
                 $remaining = $total - $paid;
+
+                if ($remaining <= 0 && $total > 0) {
+
+                    $paymentStatus = 'paid';
+                    $categoryId = 1; // lunas
+
+                } elseif ($paid > 0 && $remaining > 0) {
+
+                    $paymentStatus = 'partial';
+                    $categoryId = 2; // sebagian bayar
+
+                } else {
+
+                    $paymentStatus = 'unpaid';
+                    $categoryId = 3; // hutang
+                }
             }
 
-            // ================= AMBIL / BUAT DATA STOCK =================
+            // ================= UPDATE MASTER STOCK =================
             $record = \App\Models\WarehouseProduct::firstOrCreate(
                 [
                     'warehouse_id' => $warehouseId,
@@ -1628,64 +1648,95 @@ class ProductController extends Controller
                     'variation_id' => $variationId,
                 ],
                 [
-                    'stock'         => 0,
-                    'min_stock'     => 0,
-                    'rack_position' => null,
-                    'supplier_name' => null,
-                    'is_active'     => true,
+                    'stock' => 0,
+                    'is_active' => true
                 ]
             );
 
-            // ================= UPDATE STOCK =================
             if ($actionType === 'add') {
+
                 $record->stock += $quantity;
+
             } else {
+
                 if ($record->stock < $quantity) {
-                    throw new \Exception('Stok tidak mencukupi untuk dikurangi.');
+                    throw new \Exception('Stok tidak mencukupi.');
                 }
+
                 $record->stock -= $quantity;
             }
 
-            // Update info tambahan
             $record->min_stock     = $validated['min_stock'] ?? $record->min_stock;
             $record->rack_position = $validated['rack_position'] ?? $record->rack_position;
-
-            if ($actionType === 'add') {
-                $record->supplier_name = $validated['supplier_name'] ?? $record->supplier_name;
-            }
-
             $record->save();
 
-            // ================= SIMPAN TRANSAKSI BARU =================
-            \App\Models\WarehouseStockTransaction::create([
+
+            // ================= GENERATE TRANSACTION CODE =================
+            $today = now()->format('Ymd');
+
+            $countToday = DB::table('warehouse_stock_logs')
+                ->whereDate('created_at', now())
+                ->count();
+
+            $codeNumber = str_pad($countToday + 1, 4, '0', STR_PAD_LEFT);
+
+            $transactionCode = 'PO-' . $today . '-' . $codeNumber;
+
+
+            // ================= INSERT STOCK LOG =================
+            DB::table('warehouse_stock_logs')->insert([
+
                 'warehouse_id' => $warehouseId,
                 'product_id'   => $productId,
                 'variation_id' => $variationId,
+
                 'action_type'  => $actionType,
                 'quantity'     => $quantity,
-                'min_stock'    => $validated['min_stock'] ?? null,
-                'rack_position'=> $validated['rack_position'] ?? null,
-                'price'        => $actionType === 'add' ? $price : null,
-                'total'        => $actionType === 'add' ? $total : null,
-                'paid'         => $actionType === 'add' ? $paid : 0,
-                'remaining'    => $actionType === 'add' ? $remaining : 0,
-                'supplier_name'=> $actionType === 'add' ? $validated['supplier_name'] : null,
-                'due_date'     => $actionType === 'add' ? $validated['due_date'] : null,
-                'idpenginput'  => auth()->id(),
+
+                'transaction_code' => $transactionCode,
+
+                'price' => $actionType === 'add' ? $price : null,
+                'total' => $actionType === 'add' ? $total : null,
+                'paid'  => $actionType === 'add' ? $paid : 0,
+                'remaining' => $actionType === 'add' ? $remaining : 0,
+
+                'payment_status' => $paymentStatus,
+                'category_id' => $categoryId,
+                'due_date' => $validated['due_date'] ?? null,
+
+                'account_id' => $validated['account_id'] ?? null,
+                'transaction_date' => $validated['transaction_date'] ?? now(),
+
+                'note' => $validated['note'] ?? 'Pembelian stok',
+
+                'user_id' => auth()->id(),
+
+                'created_at' => now(),
+                'updated_at' => now()
             ]);
 
-            // ================= LOG (opsional, tetap Anda pakai) =================
-            DB::table('warehouse_stock_logs')->insert([
-                'warehouse_id' => $warehouseId,
-                'product_id'   => $productId,
-                'variation_id' => $variationId,
-                'action_type'  => $actionType,
-                'quantity'     => $quantity,
-                'note'         => $validated['supplier_name'] ?? '-',
-                'user_id'      => auth()->id(),
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ]);
+
+            // ================= INSERT CASHFLOW =================
+            if ($actionType === 'add' && $paid > 0) {
+
+                \App\Models\CashFlow::create([
+
+                    'type' => 'expense',
+
+                    'category_id' => $categoryId,
+
+                    'amount' => $paid,
+
+                    'description' => $validated['note'] ?? 'Pembelian stok ' . $transactionCode,
+
+                    'account_id' => $validated['account_id'] ?? null,
+
+                    'transaction_date' => $validated['transaction_date'] ?? now(),
+
+                    'created_by' => auth()->id()
+
+                ]);
+            }
 
             DB::commit();
 

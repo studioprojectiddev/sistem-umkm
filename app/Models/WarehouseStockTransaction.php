@@ -23,7 +23,11 @@ class WarehouseStockTransaction extends Model
         'remaining',
         'supplier_name',
         'due_date',
-        'idpenginput'
+        'idpenginput',
+        'transaction_code',
+        'account_id',
+        'transaction_date',
+        'payment_status',
     ];
 
     public function warehouse()

@@ -464,7 +464,45 @@ textarea.form-control{
 $saldo = $totalIncome - $totalExpense;
 @endphp
 
-<div class="cash-summary" style="margin-top:20px;">
+{{-- ================= FILTER ================= --}}
+
+<div class="card-section" style="margin-top:20px;">
+    <form method="GET">
+        <div class="filter-grid">
+
+            <select name="month" class="form-control">
+                <option value="">Semua Bulan</option>
+                @for($m=1;$m<=12;$m++)
+                    <option value="{{ $m }}"
+                        {{ request('month')==$m?'selected':'' }}>
+                        {{ \Carbon\Carbon::create()->month($m)->format('F') }}
+                    </option>
+                @endfor
+            </select>
+
+            <select name="year" class="form-control">
+                <option value="{{ now()->year }}">{{ now()->year }}</option>
+            </select>
+
+            <select name="type" class="form-control">
+                <option value="">Semua Tipe</option>
+                <option value="income"
+                    {{ request('type')=='income'?'selected':'' }}>
+                    Pemasukan
+                </option>
+                <option value="expense"
+                    {{ request('type')=='expense'?'selected':'' }}>
+                    Pengeluaran
+                </option>
+            </select>
+
+            <button class="btn-primary">Filter</button>
+
+        </div>
+    </form>
+</div>
+
+<div class="cash-summary">
 
     <div class="summary-card">
         <small>Total Pemasukan</small>
@@ -604,43 +642,6 @@ $saldo = $totalIncome - $totalExpense;
     </form>
 </div>
 
-{{-- ================= FILTER ================= --}}
-
-<div class="card-section">
-    <form method="GET">
-        <div class="filter-grid">
-
-            <select name="month" class="form-control">
-                <option value="">Semua Bulan</option>
-                @for($m=1;$m<=12;$m++)
-                    <option value="{{ $m }}"
-                        {{ request('month')==$m?'selected':'' }}>
-                        {{ \Carbon\Carbon::create()->month($m)->format('F') }}
-                    </option>
-                @endfor
-            </select>
-
-            <select name="year" class="form-control">
-                <option value="{{ now()->year }}">{{ now()->year }}</option>
-            </select>
-
-            <select name="type" class="form-control">
-                <option value="">Semua Tipe</option>
-                <option value="income"
-                    {{ request('type')=='income'?'selected':'' }}>
-                    Pemasukan
-                </option>
-                <option value="expense"
-                    {{ request('type')=='expense'?'selected':'' }}>
-                    Pengeluaran
-                </option>
-            </select>
-
-            <button class="btn-primary">Filter</button>
-
-        </div>
-    </form>
-</div>
 
 <div class="card-section">
     <h4>💳 Saldo Per Rekening</h4>
@@ -685,8 +686,9 @@ $saldo = $totalIncome - $totalExpense;
         <h4>🔒 Closing Bulan</h4>
 
         <form method="POST"
-              action="{{ route('umkm.transaction.close_month') }}"
-              class="closing-form">
+            action="{{ route('umkm.transaction.close_month') }}"
+            class="closing-form"
+            id="closingForm">
             @csrf
 
             <select name="month" required>
@@ -701,9 +703,7 @@ $saldo = $totalIncome - $totalExpense;
                 <option value="{{ now()->year }}">{{ now()->year }}</option>
             </select>
 
-            <button type="submit"
-                onclick="return confirm('Yakin ingin mengunci bulan ini?')"
-                class="btn-lock">
+            <button type="button" class="btn-lock" id="btnLockMonth">
                 🔒 Lock
             </button>
         </form>
@@ -979,23 +979,46 @@ document.getElementById('editIncomeForm')
     .then(response => response.json())
     .then(data => {
 
+        // 🔴 Tutup modal dulu
+        modal.classList.remove('active');
+
         if(data.status === 'success'){
-            location.reload();
-        } else {
-            alert('Gagal update');
+
+            Swal.fire({
+                icon:'success',
+                title:'Berhasil',
+                text:data.message ?? 'Transaksi berhasil diperbarui',
+                confirmButtonColor:'#4e73df'
+            }).then(()=>{
+                location.reload();
+            });
+
+        }else{
+
+            Swal.fire({
+                icon:'warning',
+                title:'Gagal',
+                text:data.message ?? 'Transaksi gagal diperbarui'
+            });
+
         }
 
     })
-    .catch(error => {
+    .catch(error=>{
         console.error(error);
-        alert('Terjadi kesalahan sistem');
+
+        Swal.fire({
+            icon:'error',
+            title:'Error',
+            text:'Terjadi kesalahan sistem'
+        });
     });
 
 });
 
-document.addEventListener('DOMContentLoaded', function(){
+const modal = document.getElementById('editIncomeModal');
 
-    const modal = document.getElementById('editIncomeModal');
+document.addEventListener('DOMContentLoaded', function(){
 
     if (!modal) return; // kalau modal tidak ada, hentikan script ini saja
 
@@ -1071,6 +1094,84 @@ new Chart(donutCtx, {
             }
         }
     }
+});
+
+document.getElementById('btnLockMonth')
+.addEventListener('click', function(){
+
+    Swal.fire({
+        title: 'Kunci bulan ini?',
+        text: 'Setelah dikunci, transaksi pada bulan tersebut tidak bisa diubah.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f6c23e',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: '🔒 Ya, Kunci',
+        cancelButtonText: 'Batal'
+    }).then((result) => {
+
+        if (result.isConfirmed) {
+
+            Swal.fire({
+                title: 'Mengunci bulan...',
+                allowOutsideClick:false,
+                didOpen: () => {
+                    Swal.showLoading()
+                }
+            });
+
+            document.getElementById('closingForm').submit();
+
+        }
+
+    });
+
+});
+
+</script>
+@endif
+
+@if(session('success'))
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    Swal.fire({
+        icon: 'success',
+        title: 'Berhasil',
+        text: "{{ session('success') }}",
+        confirmButtonColor: '#4e73df'
+    });
+
+});
+</script>
+@endif
+
+@if(session('warning'))
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    Swal.fire({
+        icon: 'warning',
+        title: 'Perhatian',
+        text: "{{ session('warning') }}",
+        confirmButtonColor: '#f6c23e'
+    });
+
+});
+</script>
+@endif
+
+@if(session('error'))
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: "{{ session('error') }}",
+        confirmButtonColor: '#e74a3b'
+    });
+
 });
 </script>
 @endif

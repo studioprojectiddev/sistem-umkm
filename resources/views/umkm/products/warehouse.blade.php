@@ -976,6 +976,18 @@
                                 <input type="text" id="remaining" readonly>
                             </div>
 
+                            <div class="form-group">
+                                <label>Rekening</label>
+                                <select name="account_id" required>
+                                    <option value="">Pilih Rekening</option>
+                                    @foreach($accounts as $acc)
+                                        <option value="{{ $acc->id }}">
+                                            {{ $acc->name }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+
                             <div class="form-group full-width">
                                 <div id="payment_status_badge" class="payment-status waiting">
                                     Menunggu Input

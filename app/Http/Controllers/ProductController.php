@@ -1903,17 +1903,133 @@ class ProductController extends Controller
         }
     }
 
-    public function updateTransfer(Request $request, $id) { 
-    
-        $transfer = WarehouseTransfer::findOrFail($id); 
-        $transfer->update([ 
-            'from_warehouse_id' => $request->from_warehouse_id, 
-            'to_warehouse_id' => $request->to_warehouse_id, 
-            'product_id' => $request->product_id, 
-            'variation_id' => $request->variation_id, 
-            'quantity' => $request->quantity, 
-        ]); 
-        return response()->json(['success' => true]); 
+    public function updateTransfer(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'from_warehouse_id' => 'required|integer',
+            'to_warehouse_id'   => 'required|integer|different:from_warehouse_id',
+            'product_id'        => 'required|integer',
+            'variation_id'      => 'nullable|integer',
+            'quantity'          => 'required|integer|min:1',
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+
+            $transfer = WarehouseTransfer::findOrFail($id);
+            $oldQty = $transfer->quantity;
+
+            DB::table('warehouse_products')
+                ->where('warehouse_id', $transfer->from_warehouse_id)
+                ->where('product_id', $transfer->product_id)
+                ->when(
+                    $transfer->variation_id,
+                    fn ($q) => $q->where('variation_id', $transfer->variation_id),
+                    fn ($q) => $q->whereNull('variation_id')
+                )
+                ->increment('stock', $oldQty);
+
+            // kurangi dari gudang tujuan
+            DB::table('warehouse_products')
+                ->where('warehouse_id', $transfer->to_warehouse_id)
+                ->where('product_id', $transfer->product_id)
+                ->when(
+                    $transfer->variation_id,
+                    fn ($q) => $q->where('variation_id', $transfer->variation_id),
+                    fn ($q) => $q->whereNull('variation_id')
+                )
+                ->decrement('stock', $oldQty);
+
+
+            $fromStock = DB::table('warehouse_products')
+                ->where('warehouse_id', $validated['from_warehouse_id'])
+                ->where('product_id', $validated['product_id'])
+                ->when(
+                    $validated['variation_id'],
+                    fn ($q) => $q->where('variation_id', $validated['variation_id']),
+                    fn ($q) => $q->whereNull('variation_id')
+                )
+                ->first(['stock','avg_cost']);
+
+            $stockAvailable = $fromStock->stock ?? 0;
+            $avgCost = $fromStock->avg_cost ?? 0;
+
+            if ($validated['quantity'] > $stockAvailable) {
+                throw new \Exception("Stok tidak mencukupi. Stok tersedia: {$stockAvailable}");
+            }
+
+
+            DB::table('warehouse_products')
+                ->where('warehouse_id', $validated['from_warehouse_id'])
+                ->where('product_id', $validated['product_id'])
+                ->when(
+                    $validated['variation_id'],
+                    fn ($q) => $q->where('variation_id', $validated['variation_id']),
+                    fn ($q) => $q->whereNull('variation_id')
+                )
+                ->decrement('stock', $validated['quantity']);
+
+            $exists = DB::table('warehouse_products')
+                ->where('warehouse_id', $validated['to_warehouse_id'])
+                ->where('product_id', $validated['product_id'])
+                ->when(
+                    $validated['variation_id'],
+                    fn ($q) => $q->where('variation_id', $validated['variation_id']),
+                    fn ($q) => $q->whereNull('variation_id')
+                )
+                ->first();
+
+            if ($exists) {
+
+                DB::table('warehouse_products')
+                    ->where('id', $exists->id)
+                    ->increment('stock', $validated['quantity']);
+
+                if (!$exists->avg_cost || $exists->avg_cost == 0) {
+                    DB::table('warehouse_products')
+                        ->where('id', $exists->id)
+                        ->update([
+                            'avg_cost' => $avgCost
+                        ]);
+                }
+
+            } else {
+
+                DB::table('warehouse_products')->insert([
+                    'warehouse_id' => $validated['to_warehouse_id'],
+                    'product_id'   => $validated['product_id'],
+                    'variation_id' => $validated['variation_id'] ?? null,
+                    'stock'        => $validated['quantity'],
+                    'avg_cost'     => $avgCost,
+                    'is_active'    => true
+                ]);
+            }
+
+            $transfer->update([
+                'from_warehouse_id' => $validated['from_warehouse_id'],
+                'to_warehouse_id'   => $validated['to_warehouse_id'],
+                'product_id'        => $validated['product_id'],
+                'variation_id'      => $validated['variation_id'],
+                'quantity'          => $validated['quantity'],
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Transfer berhasil diperbarui'
+            ]);
+
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ]);
+        }
     }
 
     public function deleteTransfer($id)

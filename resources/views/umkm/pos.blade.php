@@ -1634,6 +1634,33 @@ $("#checkout").click(function(){
 
                 if (res.status === "success") {
 
+                    let paymentInfo = '';
+
+                    if (kembalian < 0) {
+
+                        paymentInfo = `
+                            <p style="color:red;font-weight:bold;">
+                                Sisa Hutang: Rp ${Math.abs(kembalian).toLocaleString()}
+                            </p>
+                        `;
+
+                    } else if (kembalian === 0) {
+
+                        paymentInfo = `
+                            <p style="color:#2563eb;font-weight:bold;">
+                                Pembayaran Pas
+                            </p>
+                        `;
+
+                    } else {
+
+                        paymentInfo = `
+                            <p style="color:green;font-weight:bold;">
+                                Kembalian: Rp ${kembalian.toLocaleString()}
+                            </p>
+                        `;
+                    }
+
                     Swal.fire({
                         icon: 'success',
                         title: 'Transaksi Berhasil!',
@@ -1641,9 +1668,7 @@ $("#checkout").click(function(){
                             <div style="text-align:left;">
                                 <p><strong>Total:</strong> Rp ${totalHarga.toLocaleString()}</p>
                                 <p><strong>Dibayar:</strong> Rp ${uangDiterima.toLocaleString()}</p>
-                                <p style="color:green;">
-                                    <strong>Kembalian:</strong> Rp ${kembalian.toLocaleString()}
-                                </p>
+                                ${paymentInfo}
                             </div>
                         `,
                         showCancelButton: true,
@@ -1658,7 +1683,6 @@ $("#checkout").click(function(){
                         refreshCart([]);
                         location.reload();
                     });
-
                 } else {
                     Swal.fire('Error', res.message || 'Checkout gagal', 'error');
                 }

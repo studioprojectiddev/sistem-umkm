@@ -452,6 +452,37 @@ textarea.form-control{
     font-size:0.8rem;
 }
 
+.pagination-container{
+    display:flex;
+    gap:6px;
+    align-items:center;
+}
+
+.pagination-container button{
+    border:none;
+    padding:6px 12px;
+    border-radius:6px;
+    background:#f3f4f6;
+    cursor:pointer;
+    font-size:13px;
+}
+
+.pagination-container button:hover{
+    background:#dbeafe;
+}
+
+.table-footer{
+    margin-top:16px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+.table-info{
+    font-size:13px;
+    color:#666;
+}
+
 /* =========================
    MOBILE
 ========================= */
@@ -757,10 +788,11 @@ $saldo = $totalIncome - $totalExpense;
                 </tr>
             </thead>
 
-            <tbody>
+            <tbody id="cashflowTableBody">
                 @forelse($cashflows as $c)
                 <tr>
                     <td>{{ \Carbon\Carbon::parse($c->transaction_date)->format('d M Y') }}</td>
+
                     <td>
                         @if($c->type=='income')
                             <span class="badge-income">Pemasukan</span>
@@ -768,26 +800,30 @@ $saldo = $totalIncome - $totalExpense;
                             <span class="badge-expense">Pengeluaran</span>
                         @endif
                     </td>
+
                     <td>{{ $c->category->name ?? '-' }}</td>
+
                     <td>
                         <strong class="{{ $c->type=='income' ? 'text-success' : 'text-danger' }}">
                             Rp{{ number_format($c->amount,0,',','.') }}
                         </strong>
                     </td>
+
                     <td>{{ $c->description }}</td>
+
                     <td>
                         <div class="action-group">
 
                             <a href="javascript:void(0)" 
-                                class="btn-action btn-edit btn-edit-income"
-                                data-id="{{ $c->id }}"
-                                data-type="{{ $c->type }}"
-                                data-category="{{ $c->category_id }}"
-                                data-account="{{ $c->account_id }}"
-                                data-amount="{{ $c->amount }}"
-                                data-date="{{ $c->transaction_date }}"
-                                data-description="{{ $c->description }}">
-                                ✏ Edit
+                            class="btn-action btn-edit btn-edit-income"
+                            data-id="{{ $c->id }}"
+                            data-type="{{ $c->type }}"
+                            data-category="{{ $c->category_id }}"
+                            data-account="{{ $c->account_id }}"
+                            data-amount="{{ $c->amount }}"
+                            data-date="{{ $c->transaction_date }}"
+                            data-description="{{ $c->description }}">
+                            ✏ Edit
                             </a>
 
                             <form action="{{ route('umkm.transaction.delete_income',$c->id) }}" 
@@ -802,15 +838,16 @@ $saldo = $totalIncome - $totalExpense;
 
                             <a href="{{ route('umkm.transaction.trash') }}" 
                             class="btn-action btn-trash">
-                                ♻ Cek data Terhapus
+                            ♻ Cek data Terhapus
                             </a>
 
                         </div>
                     </td>
                 </tr>
+
                 @empty
                 <tr>
-                    <td colspan="5" style="text-align:center;">
+                    <td colspan="6" style="text-align:center;">
                         Belum ada transaksi
                     </td>
                 </tr>
@@ -819,8 +856,13 @@ $saldo = $totalIncome - $totalExpense;
         </table>
     </div>
 
-    <div style="margin-top:16px;">
-        {{ $cashflows->links() }}
+    <!-- Pagination Custom -->
+    <div class="table-footer">
+
+        <div id="cashflowInfo" class="table-info"></div>
+
+        <div id="cashflowPagination" class="pagination-container"></div>
+
     </div>
 </div>
 
@@ -1189,5 +1231,67 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 @endif
+
+<script>
+    document.addEventListener('DOMContentLoaded', function(){
+
+        const tbody = document.getElementById('cashflowTableBody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+
+        const pagination = document.getElementById('cashflowPagination');
+        const info = document.getElementById('cashflowInfo');
+
+        const PER_PAGE = 10;
+
+        let currentPage = 1;
+
+        const totalRows = rows.length;
+        const totalPages = Math.ceil(totalRows / PER_PAGE);
+
+        function renderPage(page){
+
+            currentPage = page;
+
+            const start = (page - 1) * PER_PAGE;
+            const end = start + PER_PAGE;
+
+            rows.forEach((row,i)=>{
+                row.style.display = (i >= start && i < end) ? '' : 'none';
+            });
+
+            info.textContent =
+                `Menampilkan ${start+1} - ${Math.min(end,totalRows)} dari ${totalRows} data`;
+
+            renderPagination();
+        }
+
+        function renderPagination(){
+
+            pagination.innerHTML = '';
+
+            const prev = document.createElement('button');
+            prev.textContent = '« Prev';
+            prev.disabled = currentPage === 1;
+            prev.onclick = () => renderPage(currentPage - 1);
+            pagination.appendChild(prev);
+
+            const pageInfo = document.createElement('span');
+            pageInfo.style.margin = '0 10px';
+            pageInfo.textContent = `Halaman ${currentPage} / ${totalPages}`;
+            pagination.appendChild(pageInfo);
+
+            const next = document.createElement('button');
+            next.textContent = 'Next »';
+            next.disabled = currentPage === totalPages;
+            next.onclick = () => renderPage(currentPage + 1);
+            pagination.appendChild(next);
+        }
+
+        if(totalRows > PER_PAGE){
+            renderPage(1);
+        }
+
+    });
+</script>
 
 @endsection

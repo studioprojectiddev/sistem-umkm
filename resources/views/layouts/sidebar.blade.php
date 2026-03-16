@@ -68,7 +68,7 @@
                 <li><a href="{{ route('umkm.report.hutang') }}" class="{{ request()->routeIs('umkm.report.hutang') ? 'active' : '' }}" >Hutang</a></li>
                 <li><a href="{{ route('umkm.report.rekap_rekening') }}" class="{{ request()->routeIs('umkm.report.rekap_rekening') ? 'active' : '' }}">Rekap Rekening</a></li>
                 <li><a href="{{ route('umkm.report.sales') }}" class="{{ request()->routeIs('umkm.report.sales') ? 'active' : '' }}">Penjualan</a></li>
-                <li><a href="" >Stok</a></li>
+                <li><a href="{{ route('umkm.report.stok') }}" class="{{ request()->routeIs('umkm.report.stok') ? 'active' : '' }}">Stok</a></li>
                 <li><a href="" >Pajak</a></li>
             </ul>
         </li>

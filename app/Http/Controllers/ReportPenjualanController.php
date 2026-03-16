@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Pagination\LengthAwarePaginator;
 use App\Models\TransactionItem;
 use App\Models\Warehouse;
@@ -25,10 +26,13 @@ class ReportPenjualanController extends Controller
             ->orderBy('name')
             ->get();
 
+        $hasWarehouseId = Schema::hasColumn('transactions', 'warehouse_id');
+        $canFilterWarehouse = $warehouseId && $hasWarehouseId;
+
         $query = TransactionItem::with(['transaction', 'product', 'variation'])
             ->when($start, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->whereDate('transaction_date', '>=', $start)))
             ->when($end, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->whereDate('transaction_date', '<=', $end)))
-            ->when($warehouseId, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->where('warehouse_id', $warehouseId)))
+            ->when($canFilterWarehouse, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->where('warehouse_id', $warehouseId)))
             ->when($status, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->where('status', $status)))
             ->when($search, function ($q) use ($search) {
                 $q->whereHas('transaction', function ($q) use ($search) {
@@ -96,10 +100,13 @@ class ReportPenjualanController extends Controller
         $warehouseId = $request->query('warehouse_id');
         $status = $request->query('status');
 
+        $hasWarehouseId = Schema::hasColumn('transactions', 'warehouse_id');
+        $canFilterWarehouse = $warehouseId && $hasWarehouseId;
+
         $query = TransactionItem::with(['transaction', 'product', 'variation'])
             ->when($start, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->whereDate('transaction_date', '>=', $start)))
             ->when($end, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->whereDate('transaction_date', '<=', $end)))
-            ->when($warehouseId, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->where('warehouse_id', $warehouseId)))
+            ->when($canFilterWarehouse, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->where('warehouse_id', $warehouseId)))
             ->when($status, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->where('status', $status)))
             ->when($search, function ($q) use ($search) {
                 $q->whereHas('transaction', function ($q) use ($search) {

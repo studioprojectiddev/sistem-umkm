@@ -61,7 +61,7 @@
             <a href="#"><i class='bx  bx-book-alt icon' ></i>   Laporan Keuangan <i class='bx bx-chevron-right icon-right'></i></a>
             <ul class="side-dropdown">
                 <li><a href="" >Dashboard Keuangan</a></li>
-                <li><a href="" >Laba rugi</a></li>
+                <li><a href="{{ route('umkm.report.laba_rugi') }}" class="{{ request()->routeIs('umkm.report.laba_rugi') ? 'active' : '' }}">Laba rugi</a></li>
                 <li><a href="" >Neraca</a></li>
                 <li><a href="" >Cashflow</a></li>
                 <li><a href="{{ route('umkm.report.piutang') }}" class="{{ request()->routeIs('umkm.report.piutang') ? 'active' : '' }}" >Piutang</a></li>

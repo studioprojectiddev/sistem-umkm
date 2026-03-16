@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Account extends Model
 {
-    protected $fillable = ['name','type','initial_balance'];
+    protected $fillable = ['name','type','type_account','initial_balance'];
 
     public function cashflows()
     {

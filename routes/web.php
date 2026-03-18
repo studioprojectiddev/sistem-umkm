@@ -10,6 +10,8 @@ use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\ReportPenjualanController;
 use App\Http\Controllers\LaporanPiutangController;
 use App\Http\Controllers\LaporanHutangController;
+use App\Http\Controllers\LaporanLabaRugiController;
+use App\Http\Controllers\LaporanStokController;
 use App\Http\Controllers\LaporanRekapRekeningController;
 
 Route::get('/', function () {
@@ -98,6 +100,14 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::get('/umkm/laporan-hutang', [LaporanHutangController::class, 'index'])->name('umkm.report.hutang');
     Route::get('/umkm/laporan-hutang/export-excel', [LaporanHutangController::class, 'exportExcel'])->name('umkm.report.hutang.export_excel');
     Route::get('/umkm/laporan-hutang/export-pdf', [LaporanHutangController::class, 'exportPdf'])->name('umkm.report.hutang.export_pdf');
+
+    Route::get('/umkm/laporan-stok', [LaporanStokController::class, 'index'])->name('umkm.report.stok');
+    Route::get('/umkm/laporan-stok/export-excel', [LaporanStokController::class, 'exportExcel'])->name('umkm.report.stok.export_excel');
+    Route::get('/umkm/laporan-stok/export-pdf', [LaporanStokController::class, 'exportPdf'])->name('umkm.report.stok.export_pdf');
+
+    Route::get('/umkm/laporan-laba-rugi', [LaporanLabaRugiController::class, 'index'])->name('umkm.report.laba_rugi');
+    Route::get('/umkm/laporan-laba-rugi/export-excel', [LaporanLabaRugiController::class, 'exportExcel'])->name('umkm.report.laba_rugi.export_excel');
+    Route::get('/umkm/laporan-laba-rugi/export-pdf', [LaporanLabaRugiController::class, 'exportPdf'])->name('umkm.report.laba_rugi.export_pdf');
 
     Route::get('/umkm/laporan-rekap-rekening', [LaporanRekapRekeningController::class, 'index'])->name('umkm.report.rekap_rekening');
     Route::get('/umkm/laporan-rekap-rekening/export-excel', [LaporanRekapRekeningController::class, 'exportExcel'])->name('umkm.report.rekap_rekening.export_excel');

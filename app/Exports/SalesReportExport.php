@@ -4,6 +4,7 @@ namespace App\Exports;
 
 use App\Models\TransactionItem;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\Schema;
 use Maatwebsite\Excel\Concerns\FromView;
 
 class SalesReportExport implements FromView
@@ -25,10 +26,13 @@ class SalesReportExport implements FromView
 
     public function view(): View
     {
+        $hasWarehouseId = Schema::hasColumn('transactions', 'warehouse_id');
+        $canFilterWarehouse = $this->warehouseId && $hasWarehouseId;
+
         $query = TransactionItem::with(['transaction', 'product', 'variation'])
             ->when($this->start, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->whereDate('transaction_date', '>=', $this->start)))
             ->when($this->end, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->whereDate('transaction_date', '<=', $this->end)))
-            ->when($this->warehouseId, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->where('warehouse_id', $this->warehouseId)))
+            ->when($canFilterWarehouse, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->where('warehouse_id', $this->warehouseId)))
             ->when($this->status, fn ($q) => $q->whereHas('transaction', fn ($q) => $q->where('status', $this->status)))
             ->when($this->search, function ($q) {
                 $search = $this->search;

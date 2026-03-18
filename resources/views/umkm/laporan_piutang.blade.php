@@ -77,12 +77,12 @@
                         </select>
                     </div>
 
-                    <div class="form-group" style="flex:1; min-width:220px;">
+                    <!-- <div class="form-group" style="flex:1; min-width:220px;">
                         <label for="q" style="display:flex; align-items:center; flex-direction:row-reverse">
                             Cari
                         </label>
                         <input type="text" id="q" name="q" value="{{ $search }}" class="form-control" placeholder="Cari nomor / pelanggan">
-                    </div>
+                    </div> -->
 
                     <div class="form-group" style="flex:1; min-width:220px;">
                         <label for="per_page" style="display:flex; align-items:center; flex-direction:row-reverse">

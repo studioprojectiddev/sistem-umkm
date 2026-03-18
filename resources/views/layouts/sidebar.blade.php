@@ -62,14 +62,14 @@
             <a href="#"><i class='bx  bx-book-alt icon' ></i>   Laporan Keuangan <i class='bx bx-chevron-right icon-right'></i></a>
             <ul class="side-dropdown">
                 <li><a href="" >Dashboard Keuangan</a></li>
-                <li><a href="" >Laba rugi</a></li>
+                <li><a href="{{ route('umkm.report.laba_rugi') }}" class="{{ request()->routeIs('umkm.report.laba_rugi') ? 'active' : '' }}">Laba rugi</a></li>
                 <li><a href="" >Neraca</a></li>
                 <li><a href="" >Cashflow</a></li>
                 <li><a href="{{ route('umkm.report.piutang') }}" class="{{ request()->routeIs('umkm.report.piutang') ? 'active' : '' }}" >Piutang</a></li>
                 <li><a href="{{ route('umkm.report.hutang') }}" class="{{ request()->routeIs('umkm.report.hutang') ? 'active' : '' }}" >Hutang</a></li>
                 <li><a href="{{ route('umkm.report.rekap_rekening') }}" class="{{ request()->routeIs('umkm.report.rekap_rekening') ? 'active' : '' }}">Rekap Rekening</a></li>
                 <li><a href="{{ route('umkm.report.sales') }}" class="{{ request()->routeIs('umkm.report.sales') ? 'active' : '' }}">Penjualan</a></li>
-                <li><a href="" >Stok</a></li>
+                <li><a href="{{ route('umkm.report.stok') }}" class="{{ request()->routeIs('umkm.report.stok') ? 'active' : '' }}">Stok</a></li>
                 <li><a href="" >Pajak</a></li>
             </ul>
         </li>

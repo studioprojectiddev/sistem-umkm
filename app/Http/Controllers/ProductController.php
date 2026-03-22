@@ -2038,4 +2038,156 @@ class ProductController extends Controller
         return response()->json(['success' => true]);
     }
 
+    public function inventory(Request $request)
+    {
+        // $warehouseId = session('active_warehouse_id');
+
+        // if (!$warehouseId) {
+        //     return redirect()->back()->with('error', 'Pilih gudang / outlet dulu');
+        // }
+
+        $purchases = DB::table('warehouse_stock_logs as wsl')
+        ->leftJoin('products as p', 'wsl.product_id', '=', 'p.id')
+        ->leftJoin('product_variations as pv', 'wsl.variation_id', '=', 'pv.id')
+        ->select(
+            'wsl.*',
+            DB::raw("
+                CASE 
+                    WHEN pv.name IS NOT NULL 
+                    THEN CONCAT(p.name, ' - ', pv.name)
+                    ELSE p.name
+                END as product_name
+            ")
+        )
+        // ->where('wsl.warehouse_id', $warehouseId)
+        ->where('wsl.action_type', 'add')
+        ->orderByDesc('wsl.id')
+        ->paginate(10, ['*'], 'purchases_page');
+
+        $debts = DB::table('warehouse_stock_logs as wsl')
+        ->leftJoin('products as p', 'wsl.product_id', '=', 'p.id')
+        ->leftJoin('product_variations as pv', 'wsl.variation_id', '=', 'pv.id')
+        ->select(
+            'wsl.*',
+            DB::raw("
+                CASE 
+                    WHEN pv.name IS NOT NULL 
+                    THEN CONCAT(p.name, ' - ', pv.name)
+                    ELSE p.name
+                END as product_name
+            ")
+        )
+        ->where('wsl.action_type', 'add')
+        ->whereIn('wsl.payment_status', ['unpaid','partial'])
+        ->where('wsl.remaining', '>', 0)
+        ->orderByDesc('wsl.id')
+        ->paginate(10, ['*'], 'debts_page');
+
+
+        $totalDebt = DB::table('warehouse_stock_logs')
+            ->whereIn('payment_status', ['unpaid','partial'])
+            ->sum('remaining');
+
+        $totalPurchase = DB::table('warehouse_stock_logs')
+            ->where('action_type', 'add')
+            ->sum('total');
+
+
+        $accounts = Account::all();
+
+        return view('umkm.products.inventory', [
+            'purchases'      => $purchases,
+            'debts'          => $debts,
+            'totalDebt'      => $totalDebt,
+            'totalPurchase'  => $totalPurchase,
+            'accounts'       => $accounts,
+        ]);
+    }
+
+    public function payDebt(Request $request)
+    {
+        DB::beginTransaction();
+
+        try {
+
+            $validated = $request->validate([
+                'log_id'   => 'required|exists:warehouse_stock_logs,id',
+                'amount'   => 'required|numeric|min:1',
+                'account_id' => 'required|exists:accounts,id',
+            ]);
+
+            $log = DB::table('warehouse_stock_logs')
+                ->where('id', $validated['log_id'])
+                ->lockForUpdate()
+                ->first();
+
+            if (!$log) {
+                throw new \Exception('Data tidak ditemukan');
+            }
+
+            if ($log->remaining <= 0) {
+                throw new \Exception('Hutang sudah lunas');
+            }
+
+            if ($validated['amount'] > $log->remaining) {
+                throw new \Exception('Pembayaran melebihi sisa hutang');
+            }
+
+            // ========================
+            // HITUNG
+            // ========================
+            $newPaid      = $log->paid + $validated['amount'];
+            $newRemaining = $log->remaining - $validated['amount'];
+
+            $newStatus = 'partial';
+
+            if ($newRemaining <= 0) {
+                $newStatus = 'paid';
+            }
+
+            // ========================
+            // UPDATE LOG
+            // ========================
+            DB::table('warehouse_stock_logs')
+                ->where('id', $log->id)
+                ->update([
+                    'paid'           => $newPaid,
+                    'remaining'      => $newRemaining,
+                    'payment_status' => $newStatus,
+                    'updated_at'     => now()
+                ]);
+
+            // ========================
+            // CASHFLOW (PENGELUARAN)
+            // ========================
+            \App\Models\CashFlow::create([
+                'type' => 'expense',
+                'category_id' => 3, // hutang / pembelian
+                'amount' => $validated['amount'],
+                'account_id' => $validated['account_id'],
+                'transaction_date' => now(),
+                'description' => 'Pembayaran hutang supplier #' . $log->transaction_code,
+                'reference_type' => 'debt_payment',
+                'reference_id' => $log->id,
+                'created_by' => auth()->id()
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Pembayaran berhasil'
+            ]);
+
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
 }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use App\Models\CashFlow;
 use App\Models\Account;
 use App\Models\CashflowCategory;
@@ -248,14 +249,157 @@ class TransactionController extends Controller
         return back()->with('success','Transaksi dihapus permanen');
     }
 
-    public function transferIndex()
+    public function transferIndex(Request $request)
     {
-        $accounts = Account::where('is_active',true)->get();
-        $transfers = AccountTransfer::with(['fromAccount','toAccount'])
-            ->orderByDesc('transfer_date')
-            ->paginate(15);
+        // ================= DATA REKENING =================
+        $accounts = Account::get();
 
-        return view('umkm.transaction.transfer',compact('accounts','transfers'));
+        // ================= DATA TRANSFER =================
+        $query = AccountTransfer::with(['fromAccount','toAccount']);
+
+        $startDate = $request->start_date ?? \Carbon\Carbon::now()->startOfMonth()->toDateString();
+        $endDate   = $request->end_date ?? \Carbon\Carbon::now()->toDateString();
+
+        $query = AccountTransfer::with(['fromAccount','toAccount'])
+            ->whereBetween('transfer_date', [$startDate, $endDate]);
+
+        $transfers = $query
+            ->orderByDesc('transfer_date')
+            ->paginate(10)
+            ->withQueryString();
+
+        // ================= TOTAL SEMUA TRANSFER =================
+        $totalTransfer = DB::table('account_transfers')
+            ->whereBetween('transfer_date', [$startDate, $endDate])
+            ->sum('amount');
+
+        // ================= TOTAL PER ACCOUNT (KHUSUS TRANSFER) =================
+        $out = DB::table('account_transfers')
+            ->select(
+                'from_account_id as account_id',
+                DB::raw('SUM(amount) * -1 as total')
+            )
+            ->whereBetween('transfer_date', [$startDate, $endDate])
+            ->groupBy('from_account_id');
+
+        $in = DB::table('account_transfers')
+            ->select(
+                'to_account_id as account_id',
+                DB::raw('SUM(amount) as total')
+            )
+            ->whereBetween('transfer_date', [$startDate, $endDate])
+            ->groupBy('to_account_id');
+
+        $accountTransferTotals = DB::table(DB::raw("({$out->toSql()} UNION ALL {$in->toSql()}) as t"))
+            ->mergeBindings($out)
+            ->mergeBindings($in)
+            ->select('account_id', DB::raw('SUM(total) as balance'))
+            ->groupBy('account_id')
+            ->pluck('balance', 'account_id');
+
+        // ================= RETURN VIEW =================
+        return view('umkm.transaction.transfer', [
+            'accounts' => $accounts,
+            'transfers' => $transfers,
+            'accountTotals' => $accountTransferTotals,
+            'totalTransfer' => $totalTransfer,
+            'startDate' => $startDate,
+            'endDate' => $endDate
+        ]);
+    }
+
+    public function storeTransferTransaksi(Request $request)
+    {
+        DB::beginTransaction();
+
+        try {
+
+            // ================= VALIDASI =================
+            $validator = \Validator::make($request->all(), [
+                'from_account_id' => 'required|exists:accounts,id',
+                'to_account_id'   => 'required|exists:accounts,id',
+                'amount'          => 'required|numeric|min:1',
+                'transfer_date'   => 'required|date'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => $validator->errors()->first()
+                ]);
+            }
+
+            $validated = $validator->validated();
+
+            // ❌ rekening sama
+            if ($validated['from_account_id'] == $validated['to_account_id']) {
+                throw new \Exception('Rekening tidak boleh sama');
+            }
+
+            // ================= CEK SALDO =================
+            $balance = DB::table('cash_flows')
+                ->where('account_id', $validated['from_account_id'])
+                ->selectRaw("
+                    COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0)
+                    -
+                    COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0)
+                    as balance
+                ")
+                ->value('balance');
+
+            if ($balance < $validated['amount']) {
+                throw new \Exception('Saldo tidak mencukupi');
+            }
+
+            // ================= SIMPAN =================
+            $transfer = AccountTransfer::create([
+                'from_account_id' => $validated['from_account_id'],
+                'to_account_id'   => $validated['to_account_id'],
+                'amount'          => $validated['amount'],
+                'transfer_date'   => $validated['transfer_date'],
+                'created_by'      => auth()->id()
+            ]);
+
+            // OUT
+            CashFlow::create([
+                'type' => 'expense',
+                'amount' => $validated['amount'],
+                'account_id' => $validated['from_account_id'],
+                'transaction_date' => $validated['transfer_date'],
+                'description' => 'Transfer keluar',
+                'reference_type' => 'transfer',
+                'reference_id' => $transfer->id,
+                'created_by' => auth()->id()
+            ]);
+
+            // IN
+            CashFlow::create([
+                'type' => 'income',
+                'amount' => $validated['amount'],
+                'account_id' => $validated['to_account_id'],
+                'transaction_date' => $validated['transfer_date'],
+                'description' => 'Transfer masuk',
+                'reference_type' => 'transfer',
+                'reference_id' => $transfer->id,
+                'created_by' => auth()->id()
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Transfer berhasil'
+            ]);
+
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
     }
 
     public function closeMonth(Request $request)
@@ -453,8 +597,329 @@ class TransactionController extends Controller
         return view('umkm.transaction.upload');
     }
 
-    public function bank(){
-        return view('umkm.transaction.bank');
+    public function processOcr(Request $request)
+    {
+        try {
+
+            // ======================
+            // VALIDASI
+            // ======================
+            $request->validate([
+                'image' => 'required|image|mimes:jpg,jpeg,png|max:2048'
+            ]);
+
+            // ======================
+            // SIMPAN FILE
+            // ======================
+            $path = $request->file('image')->store('receipts', 'public');
+            $fullPath = storage_path('app/public/' . $path);
+
+            // ======================
+            // OCR (TESERACT)
+            // ======================
+            $command = "tesseract " 
+                . escapeshellarg($fullPath) 
+                . " stdout --psm 6 -l eng 2>&1";
+
+            $text = shell_exec($command);
+
+            if (!$text) {
+                throw new \Exception('OCR gagal membaca gambar');
+            }
+
+            // ======================
+            // CLEAN TEXT
+            // ======================
+            $text = strtolower($text);
+            $text = preg_replace('/\s+/', ' ', $text);
+
+            // ======================
+            // TOTAL (SMART VERSION 🔥)
+            // ======================
+            $total = 0;
+
+            // 🔥 PRIORITAS 1: TOTAL PEMBAYARAN
+            preg_match('/total\s+pembayaran[^0-9]*([0-9\.\,]+)/i', $text, $match1);
+
+            if (!empty($match1[1])) {
+                $total = (int) preg_replace('/[^0-9]/', '', $match1[1]);
+            }
+
+            // 🔥 PRIORITAS 2: GRAND TOTAL / TOTAL BAYAR
+            if ($total == 0) {
+                preg_match('/(grand\s+total|total\s+bayar)[^0-9]*([0-9\.\,]+)/i', $text, $match2);
+
+                if (!empty($match2[2])) {
+                    $total = (int) preg_replace('/[^0-9]/', '', $match2[2]);
+                }
+            }
+
+            // 🔥 PRIORITAS 3: TOTAL SAJA
+            if ($total == 0) {
+                preg_match('/total[^0-9]*([0-9\.\,]+)/i', $text, $match3);
+
+                if (!empty($match3[1])) {
+                    $total = (int) preg_replace('/[^0-9]/', '', $match3[1]);
+                }
+            }
+
+            // 🔥 PRIORITAS 4: ANGKA TERAKHIR (fallback)
+            if ($total == 0) {
+                preg_match_all('/rp\s?([0-9\.\,]+)/i', $text, $matches);
+
+                if (!empty($matches[1])) {
+                    $last = end($matches[1]);
+                    $total = (int) preg_replace('/[^0-9]/', '', $last);
+                }
+            }
+
+            // ======================
+            // DATE (SMART VERSION 🔥)
+            // ======================
+            $date = now()->format('Y-m-d'); // default hari ini
+
+            // format: 21/03/2026 atau 21-03-2026
+            preg_match('/(\d{2}[\/\-]\d{2}[\/\-]\d{4})/', $text, $dateMatch1);
+
+            // format: 2026-03-21
+            preg_match('/(\d{4}[\/\-]\d{2}[\/\-]\d{2})/', $text, $dateMatch2);
+
+            // fallback: angka 8 digit (21032026)
+            preg_match('/(\d{8})/', $text, $dateMatch3);
+
+            if (!empty($dateMatch1[1])) {
+
+                try {
+                    $date = \Carbon\Carbon::createFromFormat(
+                        'd-m-Y',
+                        str_replace('/', '-', $dateMatch1[1])
+                    )->format('Y-m-d');
+                } catch (\Exception $e) {}
+
+            } elseif (!empty($dateMatch2[1])) {
+
+                try {
+                    $date = \Carbon\Carbon::parse($dateMatch2[1])->format('Y-m-d');
+                } catch (\Exception $e) {}
+
+            } elseif (!empty($dateMatch3[1])) {
+
+                try {
+                    $raw = $dateMatch3[1];
+
+                    $day = substr($raw, 0, 2);
+                    $month = substr($raw, 2, 2);
+                    $year = substr($raw, 4, 4);
+
+                    $date = \Carbon\Carbon::createFromFormat(
+                        'd-m-Y',
+                        "$day-$month-$year"
+                    )->format('Y-m-d');
+
+                } catch (\Exception $e) {}
+            }
+
+            // ======================
+            // RESPONSE
+            // ======================
+            return response()->json([
+                'status' => 'success',
+                'text' => $text,
+                'total' => $total,
+                'date' => $date,
+                'image_url' => asset('storage/' . $path)
+            ]);
+
+        } catch (\Throwable $e) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function storeFromOcr(Request $request)
+    {
+        DB::beginTransaction();
+
+        try {
+
+            $request->validate([
+                'amount' => 'required|numeric|min:1',
+                'transaction_date' => 'required|date',
+                'account_id' => 'required|exists:accounts,id'
+            ]);
+
+            // ======================
+            // SIMPAN KE CASH FLOW
+            // ======================
+            CashFlow::create([
+                'type' => 'expense', // default dari nota
+                'amount' => $request->amount,
+                'account_id' => $request->account_id,
+                'transaction_date' => $request->transaction_date,
+                'description' => 'OCR Nota',
+                'reference_type' => 'ocr',
+                'reference_id' => null,
+                'created_by' => auth()->id()
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Transaksi berhasil disimpan'
+            ]);
+
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function bank()
+    {
+        $accounts = Account::all();
+
+        // HITUNG SALDO
+        $balances = DB::table('cash_flows')
+            ->select(
+                'account_id',
+                DB::raw("
+                    COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0)
+                    -
+                    COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0)
+                    as balance
+                ")
+            )
+            ->groupBy('account_id')
+            ->pluck('balance', 'account_id');
+
+        // TOTAL SEMUA
+        $totalBalance = $balances->sum();
+
+        return view('umkm.transaction.bank', compact(
+            'accounts',
+            'balances',
+            'totalBalance'
+        ));
+    }
+
+    public function storeAccount(Request $request)
+    {
+        try {
+
+            $name = $request->input('name');
+
+            if(!$name){
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Nama kosong'
+                ]);
+            }
+
+            Account::create([
+                'name' => $name,
+                'type' => 'cash', // default
+                'type_account' => null,
+                'initial_balance' => 0
+            ]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Rekening berhasil ditambahkan'
+            ]);
+
+        } catch (\Throwable $e) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function updateAccount(Request $request, $id)
+    {
+        try {
+
+            $account = Account::findOrFail($id);
+
+            $request->validate([
+                'name' => 'required|string|max:100'
+            ]);
+
+            // 🚨 CEK SUDAH DIPAKAI ATAU BELUM
+            if ($account->cashflows()->exists()) {
+
+                // 🔒 HANYA BOLEH UBAH NAMA
+                $account->update([
+                    'name' => $request->name
+                ]);
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Nama rekening berhasil diupdate (type & saldo terkunci karena sudah ada transaksi)'
+                ]);
+
+            } else {
+
+                // ✅ BEBAS EDIT
+                $account->update([
+                    'name' => $request->name,
+                    'type' => $request->type,
+                    'initial_balance' => $request->initial_balance ?? 0,
+                ]);
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Rekening berhasil diupdate'
+                ]);
+            }
+
+        } catch (\Throwable $e) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function deleteAccount($id)
+    {
+        try {
+
+            $account = Account::findOrFail($id);
+
+            // 🚨 CEK ADA TRANSAKSI ATAU TIDAK
+            if ($account->cashflows()->exists()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Rekening tidak bisa dihapus karena sudah digunakan di transaksi'
+                ]);
+            }
+
+            $account->delete();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Rekening berhasil dihapus'
+            ]);
+
+        } catch (\Throwable $e) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
     }
 
     public function history(){

@@ -31,7 +31,7 @@
                 <li><a href="{{ route('umkm.transaction.transfer') }}">Transfer Antar Rekening</a></li>
                 <li><a href="{{ route('umkm.transaction.upload') }}" >Upload nota (OCR)</a></li>
                 <li><a href="{{ route('umkm.transaction.bank') }}" >Bank/e-wallet</a></li>
-                <li><a href="{{ route('umkm.transaction.history') }}" >Histori transaksi</a></li>
+                {{-- <li><a href="{{ route('umkm.transaction.history') }}" >Histori transaksi</a></li> --}}
             </ul>
         </li>
 

@@ -59,7 +59,8 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::put('/umkm/warehouse-transfer/{id}', [ProductController::class, 'updateTransfer']);
     Route::delete('/umkm/warehouse-transfer-delete/{id}', [ProductController::class, 'deleteTransfer']);
 
-    Route::get('/warehouse', [ProductController::class, 'inventory'])->name('umkm.product.inventory');
+    Route::get('/inventory', [ProductController::class, 'inventory'])->name('umkm.product.inventory');
+    Route::post('/umkm/inventory/pay-debt', [ProductController::class, 'payDebt'])->name('umkm.inventory.payDebt');
 
     // Kategori UMKM (semua via ProductController)
     Route::get('/umkm/category', [ProductController::class, 'category'])->name('umkm.category');
@@ -144,8 +145,10 @@ Route::middleware(['auth','umkm'])->group(function () {
         ->name('umkm.transaction.forceDelete');
     Route::get('/umkm/transfer', [TransactionController::class,'transferIndex'])
         ->name('umkm.transaction.transfer');
-    Route::post('/umkm/transfer', [TransactionController::class,'storeTransfer'])
+    Route::post('/umkm/transfer', [TransactionController::class,'storeTransferTransaksi'])
         ->name('umkm.transaction.store_transfer');
+    Route::post('/umkm/store-from-ocr', [TransactionController::class, 'storeFromOcr'])
+        ->name('umkm.transaction.store_ocr');
     Route::post('/umkm/close-month', [TransactionController::class,'closeMonth'])
         ->name('umkm.transaction.close_month');
     Route::post('/umkm/unlock-month', [TransactionController::class,'unlockMonth'])
@@ -153,8 +156,15 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::get('/umkm/export_income', [TransactionController::class,'export_income'])
         ->name('umkm.transaction.export_income');
     Route::put('/umkm/transaction/update_income/{id}', [TransactionController::class,'update_income']);
+    
     Route::get('/upload', [TransactionController::class, 'upload'])->name('umkm.transaction.upload');
+    Route::post('/umkm/ocr/process', [TransactionController::class, 'processOcr'])->name('umkm.transaction.ocr');
+
     Route::get('/bank', [TransactionController::class, 'bank'])->name('umkm.transaction.bank');
+    Route::post('/umkm/bank/store', [TransactionController::class, 'storeAccount']);
+    Route::post('/umkm/bank/update/{id}', [TransactionController::class, 'updateAccount']);
+    Route::delete('/umkm/bank/delete/{id}', [TransactionController::class, 'deleteAccount']);
+
     Route::get('/history', [TransactionController::class, 'history'])->name('umkm.transaction.history');    
     
 });

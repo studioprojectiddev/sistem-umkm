@@ -1531,41 +1531,130 @@ $("#checkout").click(function(){
     Swal.fire({
         title: 'Pembayaran',
         html: `
-            <div style="text-align:left;">
-                <p><strong>Total Belanja:</strong> Rp ${totalHarga.toLocaleString()}</p>
-                
-                <label for="uangDiterima">Pembayaran:</label>
-                <input id="uangDiterima" type="number" min="0" class="swal2-input" placeholder="Masukkan jumlah uang">
-                
-                <div id="utangSection" style="display:none;margin-top:15px;">
-                    <hr>
-                    <label for="customerName">Nama Pembeli (utang):</label>
-                    <input id="customerName" type="text" class="swal2-input" placeholder="Nama pelanggan">
-                    
-                    <label for="dueDate">Tanggal Pembayaran:</label>
-                    <input id="dueDate" type="date" class="swal2-input">
+            <div style="text-align:left; font-size:14px;">
+
+                <div style="margin-bottom:12px;">
+                    <strong>Total Belanja:</strong> 
+                    <span style="font-size:16px; font-weight:bold;">
+                        Rp ${totalHarga.toLocaleString()}
+                    </span>
                 </div>
 
-                <label>Metode Pembayaran / Rekening:</label>
-                <select id="account_id" class="swal2-input">
-                    @foreach($accounts as $acc)
-                        <option value="{{ $acc->id }}">
-                            {{ $acc->name }}
-                        </option>
-                    @endforeach
-                </select>
+                <!-- BARIS 1 -->
+                <div style="display:flex; gap:10px; align-items:end;">
+                    <div style="flex:1;">
+                        <label>Pembayaran</label>
+                        <input id="uangDiterima" type="number" class="swal2-input" style="margin:0;">
+                    </div>
 
-                <p id="kembalianText" style="margin-top:10px;font-weight:bold;font-size:15px;color:green;">
+                    <div style="width:160px;">
+                        <label>Metode</label>
+                        <select id="account_id" class="swal2-input" style="margin:0;">
+                            @foreach($accounts as $acc)
+                                <option value="{{ $acc->id }}">{{ $acc->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+
+                <div style="
+                    display:grid;
+                    grid-template-columns: 1fr 1fr 160px;
+                    gap:10px;
+                    margin-top:10px;
+                ">
+
+                    <div>
+                        <label>Nama Pelanggan</label>
+                        <input id="customerName" list="customerList" class="swal2-input" 
+                            placeholder="Nama pelanggan" style="margin:0; width:100%;">
+                        <datalist id="customerList"></datalist>
+                    </div>
+
+                    <div>
+                        <label>No HP</label>
+                        <input id="customerPhone" type="text" class="swal2-input" 
+                            placeholder="No HP" style="margin:0; width:100%;">
+                    </div>
+
+                    <div>
+                        <label>Jatuh Tempo</label>
+                        <input id="dueDate" type="date" class="swal2-input" 
+                            style="margin:0; width:100%;">
+                    </div>
+
+                </div>
+
+                <div id="utangSection" style="
+                    display:none; 
+                    margin-top:12px;
+                    padding:10px;
+                    border-left:4px solid #dc3545;
+                    background:#fff8f8;
+                    border-radius:6px;
+                ">
+
+                    <div style="color:#dc3545; font-size:13px; margin-bottom:6px; font-weight:600;">
+                        ⚠ Transaksi Utang
+                    </div>
+                </div>
+
+                <div id="kembalianText" 
+                    style="margin-top:12px; font-weight:bold; font-size:15px; color:green;">
                     Kembalian: Rp 0
-                </p>
+                </div>
+
             </div>
-        `,
+            `,
         showCancelButton: true,
         confirmButtonText: 'Proses Pembayaran',
         didOpen: () => {
             const uangInput = document.getElementById('uangDiterima');
             const kembalianText = document.getElementById('kembalianText');
             const utangSection = document.getElementById('utangSection');
+            const customerInput = document.getElementById('customerName');
+            const datalist = document.getElementById('customerList');
+
+            let debounceTimer;
+
+            customerInput.addEventListener('input', function() {
+
+                clearTimeout(debounceTimer);
+
+                debounceTimer = setTimeout(() => {
+
+                    let query = this.value;
+
+                    if (query.length < 1) return;
+
+                    fetch(`/pos/suggest?q=${query}`)
+                        .then(res => res.json())
+                        .then(data => {
+                            datalist.innerHTML = '';
+
+                            data.forEach(c => {
+                                const option = document.createElement('option');
+                                option.value = c.customer_name;
+                                option.dataset.phone = c.customer_phone;
+                                datalist.appendChild(option);
+                            });
+                        });
+
+                }, 300);
+
+            });
+
+            customerInput.addEventListener('input', function() {
+
+                const selected = Array.from(datalist.options).find(
+                    opt => opt.value === this.value
+                );
+
+                if (selected) {
+                    document.getElementById('customerPhone').value = selected.dataset.phone || '';
+                }
+
+            });
 
             uangInput.addEventListener('input', function() {
                 const uang = parseInt(this.value || 0);
@@ -1585,13 +1674,15 @@ $("#checkout").click(function(){
         preConfirm: () => {
             const uang = parseInt(document.getElementById('uangDiterima').value || 0);
             const kembali = uang - totalHarga;
+            
+            const nama = document.getElementById('customerName').value.trim();
+            const phone = document.getElementById('customerPhone').value.trim();
+            const jatuhTempo = document.getElementById('dueDate').value;
 
             if (uang < totalHarga) {
-                const nama = document.getElementById('customerName').value.trim();
-                const jatuhTempo = document.getElementById('dueDate').value;
 
                 if (!nama) {
-                    Swal.showValidationMessage('Nama pelanggan wajib diisi jika uang kurang!');
+                    Swal.showValidationMessage('Nama pelanggan wajib diisi jika utang!');
                     return false;
                 }
 
@@ -1600,18 +1691,17 @@ $("#checkout").click(function(){
                     return false;
                 }
 
-                return { 
-                    uang, 
-                    customer_name: nama, 
-                    due_date: jatuhTempo,
-                    account_id: document.getElementById('account_id').value
-                };
+                if (!phone) {
+                    Swal.showValidationMessage('Nomor HP wajib diisi!');
+                    return false;
+                }
             }
 
             return { 
                 uang, 
-                customer_name: null, 
-                due_date: null,
+                customer_name: nama || null,
+                customer_phone: phone || null,
+                due_date: uang < totalHarga ? jatuhTempo : null,
                 account_id: document.getElementById('account_id').value
             };
         }
@@ -1628,6 +1718,7 @@ $("#checkout").click(function(){
                 uang_diterima: uangDiterima,
                 kembalian: kembalian,
                 customer_name: data.customer_name,
+                customer_phone: data.customer_phone,
                 due_date: data.due_date,
                 account_id: data.account_id
             }, function(res){

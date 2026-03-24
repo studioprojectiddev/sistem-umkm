@@ -52,9 +52,9 @@
         <li>
             <a href="#"><i class='bx  bx-user icon'  ></i>  Pelanggan (CRM Mini) <i class='bx bx-chevron-right icon-right'></i></a>
             <ul class="side-dropdown">
-                <li><a href="">Data pelanggan</a></li>
-                <li><a href="" >Segmentasi</a></li>
-                <li><a href="" >Broadcast promo/WA</a></li>
+                <li><a href="{{ route('umkm.customer.data') }}">Data pelanggan</a></li>
+                {{-- <li><a href="" >Segmentasi</a></li>
+                <li><a href="" >Broadcast promo/WA</a></li> --}}
             </ul>
         </li>
 
@@ -76,7 +76,7 @@
         <li>
             <a href="#"><i class='bx  bx-trending-down icon'  ></i> Insight & Rekomendasi <i class='bx bx-chevron-right icon-right'></i></a>
             <ul class="side-dropdown">
-                <li><a href="">Penjualan & pelanggan</a></li>
+                <li><a href="{{ route('umkm.insight.penjualan') }}">Penjualan & pelanggan</a></li>
                 <li><a href="" >Prediksi penjualan</a></li>
                 <li><a href="" >Efisiensi biaya</a></li>
                 <li><a href="" >Rekomendasi promosi</a></li>

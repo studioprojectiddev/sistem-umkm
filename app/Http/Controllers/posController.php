@@ -336,7 +336,9 @@ class PosController extends Controller
         }
 
         $request->validate([
-            'account_id' => 'required|exists:accounts,id'
+            'account_id' => 'required|exists:accounts,id',
+            'customer_name' => 'nullable|string|max:100',
+            'customer_phone' => 'nullable|string|max:20',
         ]);
 
         DB::beginTransaction();
@@ -380,8 +382,12 @@ class PosController extends Controller
                 'account_id'       => $account->id,
                 'uang_diterima'    => $uangDiterima,
                 'kembalian'        => $kembalian,
-                'customer_name'    => $isUtang ? $request->customer_name : null,
+
+                // 🔥 INI YANG KURANG
+                'customer_name'  => $request->customer_name,
+                'customer_phone' => $request->customer_phone,
                 'due_date'         => $isUtang ? $request->due_date : null,
+
                 'status'           => 'completed',
             ]);
 
@@ -984,6 +990,21 @@ class PosController extends Controller
     {
         $transaction = Transaction::with('items.product', 'items.variation')->findOrFail($id);
         return view('umkm.receipt', compact('transaction'));
+    }
+
+    public function suggest(Request $request)
+    {
+        $search = $request->q;
+
+        $customers = DB::table('transactions')
+            ->select('customer_name', 'customer_phone')
+            ->whereNotNull('customer_name')
+            ->where('customer_name', 'like', "%$search%")
+            ->groupBy('customer_name', 'customer_phone')
+            ->limit(10)
+            ->get();
+
+        return response()->json($customers);
     }
 
 }

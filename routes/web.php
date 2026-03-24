@@ -13,6 +13,8 @@ use App\Http\Controllers\LaporanHutangController;
 use App\Http\Controllers\LaporanLabaRugiController;
 use App\Http\Controllers\LaporanStokController;
 use App\Http\Controllers\LaporanRekapRekeningController;
+use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\InsightController;
 
 Route::get('/', function () {
     return redirect()->route('login');
@@ -89,6 +91,7 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::get('/stock/summary', [PosController::class, 'summary']);
     Route::get('/api/report/products', [PosController::class, 'productReport']);
     Route::get('/umkm/pos/receipt/{id}', [PosController::class, 'receipt'])->name('umkm.pos.receipt');
+    Route::get('/pos/suggest', [PosController::class, 'suggest']);
 
     Route::get('/umkm/laporan-penjualan', [ReportPenjualanController::class, 'index'])->name('umkm.report.sales');
     Route::get('/umkm/laporan-penjualan/export-excel', [ReportPenjualanController::class, 'exportExcel'])->name('umkm.report.sales.export_excel');
@@ -165,8 +168,12 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::post('/umkm/bank/update/{id}', [TransactionController::class, 'updateAccount']);
     Route::delete('/umkm/bank/delete/{id}', [TransactionController::class, 'deleteAccount']);
 
-    Route::get('/history', [TransactionController::class, 'history'])->name('umkm.transaction.history');    
-    
+    // Route::get('/history', [TransactionController::class, 'history'])->name('umkm.transaction.history');    
+
+    Route::get('/customer', [CustomerController::class, 'index'])->name('umkm.customer.data');
+    Route::post('/umkm/customer/bayar', [CustomerController::class, 'bayar']);
+
+    Route::get('/penjualan-pelanggan', [InsightController::class, 'penjualan'])->name('umkm.insight.penjualan');
 });
 
 Route::middleware(['auth', 'role:umkm'])->group(function () {

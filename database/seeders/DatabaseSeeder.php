@@ -19,6 +19,11 @@ class DatabaseSeeder extends Seeder
             'name' => 'Test User',
             'email' => 'test@example.com',
         ]);
+        User::factory()->create([
+            'name' => 'Superadmin',
+            'email' => 'admin@umkm.test',
+            'role' => 'superadmin',
+        ]);
 
         $this->call([
             ChartOfAccountsSeeder::class,

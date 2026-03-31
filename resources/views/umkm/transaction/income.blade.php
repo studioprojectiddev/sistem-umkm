@@ -783,6 +783,7 @@ $saldo = $totalIncome - $totalExpense;
                     <th>Tipe</th>
                     <th>Kategori</th>
                     <th>Nominal</th>
+                    <th>Dibayar</th>
                     <th>Keterangan</th>
                     <th>Aksi</th>
                 </tr>
@@ -805,7 +806,13 @@ $saldo = $totalIncome - $totalExpense;
 
                     <td>
                         <strong class="{{ $c->type=='income' ? 'text-success' : 'text-danger' }}">
-                            Rp{{ number_format($c->amount,0,',','.') }}
+                            Rp{{ number_format($c->nominal,0,',','.') }}
+                        </strong>
+                    </td>
+
+                    <td>
+                        <strong class="{{ $c->type=='income' ? 'text-success' : 'text-danger' }}">
+                            Rp{{ number_format($c->dibayar,0,',','.') }}
                         </strong>
                     </td>
 
@@ -847,7 +854,7 @@ $saldo = $totalIncome - $totalExpense;
 
                 @empty
                 <tr>
-                    <td colspan="6" style="text-align:center;">
+                    <td colspan="7" style="text-align:center;">
                         Belum ada transaksi
                     </td>
                 </tr>

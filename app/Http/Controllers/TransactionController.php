@@ -23,26 +23,54 @@ class TransactionController extends Controller
         $year  = $request->year ?? now()->year;
         $type  = $request->type;
 
-        $query = CashFlow::query();
+        $query = CashFlow::query()
+            ->select([
+                'cash_flows.id',
+                'cash_flows.type',
+                'cash_flows.category_id',
+                'cash_flows.account_id',
+                'cash_flows.amount',
+                'cash_flows.amount as dibayar',
+                'cash_flows.description',
+                'cash_flows.transaction_date',
+                'cash_flows.reference_type',
+                'cash_flows.reference_id',
+                'cash_flows.created_by',
+                DB::raw('
+                    CASE
+                        WHEN cash_flows.reference_type = \'pos\' THEN COALESCE(transactions.total, cash_flows.amount)
+                        WHEN cash_flows.reference_type = \'warehouse\' THEN COALESCE(warehouse_stock_logs.total, cash_flows.amount)
+                        ELSE cash_flows.amount
+                    END AS nominal
+                ')
+            ])
+            ->leftJoin('transactions', function($join) {
+                $join->on('cash_flows.reference_id', '=', 'transactions.id')
+                    ->where('cash_flows.reference_type', '=', DB::raw("'pos'"));
+            })
+            ->leftJoin('warehouse_stock_logs', function($join) {
+                $join->on('cash_flows.reference_id', '=', 'warehouse_stock_logs.id')
+                    ->where('cash_flows.reference_type', '=', DB::raw("'warehouse'"));
+            });
 
         // ================= FILTER =================
 
         if ($month) {
-            $query->whereMonth('transaction_date', $month);
+            $query->whereMonth('cash_flows.transaction_date', $month);
         }
 
         if ($year) {
-            $query->whereYear('transaction_date', $year);
+            $query->whereYear('cash_flows.transaction_date', $year);
         }
 
         if ($type) {
-            $query->where('type', $type);
+            $query->where('cash_flows.type', $type);
         }
 
-        $cashflows = $query->orderByDesc('transaction_date')->paginate(20);
+        $cashflows = $query->orderByDesc('cash_flows.transaction_date')->paginate(20);
 
-        $totalIncome = (clone $query)->where('type','income')->sum('amount');
-        $totalExpense = (clone $query)->where('type','expense')->sum('amount');
+        $totalIncome = (clone $query)->where('cash_flows.type','income')->sum('cash_flows.amount');
+        $totalExpense = (clone $query)->where('cash_flows.type','expense')->sum('cash_flows.amount');
 
         // ================= GRAFIK CASHFLOW =================
 

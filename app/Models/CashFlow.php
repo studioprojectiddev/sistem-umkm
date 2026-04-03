@@ -9,18 +9,38 @@ class CashFlow extends Model
 {
     use SoftDeletes;
 
+    public const STATUS_WAITING = 'waiting_check';
+    public const STATUS_CHECKED = 'checked';
+    public const STATUS_POSTING = 'posting';
+    public const STATUS_VOID = 'void';
+
     protected $fillable = [
         'type',
         'category_id',
         'account_id',
         'amount',
         'transaction_date',
+        'status_accounting',
+        'checked_by',
+        'checked_at',
+        'posted_by',
+        'posted_at',
+        'void_by',
+        'void_at',
+        'void_reason',
         'description',
         'reference_type',
         'reference_id',
         'created_by',
         'updated_by',
         'deleted_by'
+    ];
+
+    protected $casts = [
+        'transaction_date' => 'datetime',
+        'checked_at' => 'datetime',
+        'posted_at' => 'datetime',
+        'void_at' => 'datetime',
     ];
 
     // 🔹 Relasi kategori

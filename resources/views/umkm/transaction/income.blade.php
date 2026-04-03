@@ -782,6 +782,7 @@ $saldo = $totalIncome - $totalExpense;
                     <th>Tanggal</th>
                     <th>Tipe</th>
                     <th>Kategori</th>
+                    <th>Status</th>
                     <th>Nominal</th>
                     <th>Dibayar</th>
                     <th>Keterangan</th>
@@ -803,6 +804,31 @@ $saldo = $totalIncome - $totalExpense;
                     </td>
 
                     <td>{{ $c->category->name ?? '-' }}</td>
+
+                    <td>
+                        @php
+                            $statusLabel = 'Unknown';
+                            $statusClass = 'badge-expense';
+
+                            if ($c->status_accounting === \App\Models\CashFlow::STATUS_WAITING) {
+                                $statusLabel = 'Waiting Check';
+                                $statusClass = 'badge-income';
+                            } elseif ($c->status_accounting === \App\Models\CashFlow::STATUS_CHECKED) {
+                                $statusLabel = 'Checked';
+                                $statusClass = 'badge-income';
+                            } elseif ($c->status_accounting === \App\Models\CashFlow::STATUS_POSTING) {
+                                $statusLabel = 'Posted';
+                                $statusClass = 'badge-income';
+                            } elseif ($c->status_accounting === \App\Models\CashFlow::STATUS_VOID) {
+                                $statusLabel = 'Void';
+                                $statusClass = 'badge-expense';
+                            }
+                        @endphp
+
+                        <span class="{{ $statusClass }}" style="padding:4px 10px;border-radius:6px;font-size:0.8rem;">
+                            {{ $statusLabel }}
+                        </span>
+                    </td>
 
                     <td>
                         <strong class="{{ $c->type=='income' ? 'text-success' : 'text-danger' }}">
@@ -842,6 +868,31 @@ $saldo = $totalIncome - $totalExpense;
                                     🗑 Hapus
                                 </button>
                             </form>
+
+                            @if($c->status_accounting === \App\Models\CashFlow::STATUS_WAITING)
+                                <form action="{{ route('umkm.transaction.check_cashflow', $c->id) }}" method="POST" style="display:inline;">
+                                    @csrf
+                                    <button type="submit" class="btn-action btn-primary" style="background:#1a73e8; color:#fff;">✔ Check</button>
+                                </form>
+                            @endif
+
+                            @if($c->status_accounting === \App\Models\CashFlow::STATUS_CHECKED)
+                                <form action="{{ route('umkm.transaction.post_cashflow', $c->id) }}" method="POST" style="display:inline;">
+                                    @csrf
+                                    <button type="submit" class="btn-action btn-primary" style="background:#0ea5e9; color:#fff;">🚀 Post</button>
+                                </form>
+                                <form action="{{ route('umkm.transaction.void_cashflow', $c->id) }}" method="POST" style="display:inline;">
+                                    @csrf
+                                    <button type="submit" class="btn-action btn-delete" style="background:#f43f5e; color:#fff;">❌ Void</button>
+                                </form>
+                            @endif
+
+                            @if($c->status_accounting === \App\Models\CashFlow::STATUS_POSTING)
+                                <form action="{{ route('umkm.transaction.void_cashflow', $c->id) }}" method="POST" style="display:inline;">
+                                    @csrf
+                                    <button type="submit" class="btn-action btn-delete" style="background:#f43f5e; color:#fff;">❌ Void</button>
+                                </form>
+                            @endif
 
                             <a href="{{ route('umkm.transaction.trash') }}" 
                             class="btn-action btn-trash">

@@ -29,6 +29,7 @@ class TransactionController extends Controller
                 'cash_flows.type',
                 'cash_flows.category_id',
                 'cash_flows.account_id',
+                'cash_flows.status_accounting',
                 'cash_flows.amount',
                 'cash_flows.amount as dibayar',
                 'cash_flows.description',
@@ -229,6 +230,7 @@ class TransactionController extends Controller
             'account_id'=>$request->account_id,
             'amount'=>$request->amount,
             'transaction_date'=>$request->transaction_date,
+            'status_accounting' => CashFlow::STATUS_WAITING,
             'description'=>$request->description,
             'created_by'=>auth()->id()
         ]);
@@ -247,6 +249,80 @@ class TransactionController extends Controller
         $cashflow->delete();
 
         return back()->with('success','Data berhasil dihapus');
+    }
+
+    public function check_cashflow($id)
+    {
+        $cashflow = CashFlow::findOrFail($id);
+
+        if ($cashflow->status_accounting !== CashFlow::STATUS_WAITING) {
+            return back()->with('error','Hanya transaksi waiting_check yang bisa dicek.');
+        }
+
+        $cashflow->update([
+            'status_accounting' => CashFlow::STATUS_CHECKED,
+            'checked_by' => auth()->id(),
+            'checked_at' => now(),
+        ]);
+
+        return back()->with('success','Transaksi berhasil dichek.');
+    }
+
+    public function post_cashflow($id)
+    {
+        $cashflow = CashFlow::findOrFail($id);
+
+        if ($cashflow->status_accounting !== CashFlow::STATUS_CHECKED) {
+            return back()->with('error','Hanya transaksi checked yang bisa diposting.');
+        }
+
+        DB::transaction(function () use ($cashflow) {
+            if ($cashflow->type === 'income') {
+                app(\App\Services\AccountingService::class)->createCashInJournal($cashflow);
+            } else {
+                app(\App\Services\AccountingService::class)->createCashOutJournal($cashflow);
+            }
+
+            $cashflow->update([
+                'status_accounting' => CashFlow::STATUS_POSTING,
+                'posted_by' => auth()->id(),
+                'posted_at' => now(),
+            ]);
+        });
+
+        return back()->with('success','Transaksi berhasil diposting.');
+    }
+
+    public function void_cashflow($id)
+    {
+        $cashflow = CashFlow::findOrFail($id);
+
+        if ($cashflow->status_accounting !== CashFlow::STATUS_POSTING) {
+            return back()->with('error','Hanya transaksi posting yang bisa di-void.');
+        }
+
+        DB::transaction(function () use ($cashflow) {
+            $accounting = \App\Models\Accounting::where('reference_type','cashflow')
+                ->where('reference_id',$cashflow->id)
+                ->where('is_reversal', false)
+                ->first();
+
+            if (!$accounting) {
+                throw new \Exception('Jurnal yang sesuai tidak ditemukan untuk void.');
+            }
+
+            app(\App\Services\AccountingService::class)
+                ->createReversalJournal($accounting, 'Void cashflow #' . $cashflow->id);
+
+            $cashflow->update([
+                'status_accounting' => CashFlow::STATUS_VOID,
+                'void_by' => auth()->id(),
+                'void_at' => now(),
+                'void_reason' => 'Void via UI',
+            ]);
+        });
+
+        return back()->with('success','Transaksi berhasil di-void.');
     }
 
     public function trash()

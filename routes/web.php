@@ -140,6 +140,9 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::get('/income', [TransactionController::class, 'income'])->name('umkm.transaction.income');
     Route::post('/income/store', [TransactionController::class, 'store_income'])->name('umkm.transaction.store_income');
     Route::delete('/income/delte/{id}', [TransactionController::class, 'destroy_income'])->name('umkm.transaction.delete_income');
+    Route::post('/cashflow/{id}/check', [TransactionController::class, 'check_cashflow'])->name('umkm.transaction.check_cashflow');
+    Route::post('/cashflow/{id}/post', [TransactionController::class, 'post_cashflow'])->name('umkm.transaction.post_cashflow');
+    Route::post('/cashflow/{id}/void', [TransactionController::class, 'void_cashflow'])->name('umkm.transaction.void_cashflow');
     Route::get('/cashflow/trash', [TransactionController::class,'trash'])
         ->name('umkm.transaction.trash');
     Route::post('/cashflow/restore/{id}', [TransactionController::class,'restore'])

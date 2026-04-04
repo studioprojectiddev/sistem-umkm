@@ -6,8 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use App\Models\WarehouseProduct;
-use App\Models\WarehouseStockTransaction;
+use App\Models\WarehouseStockLog;
 use App\Exports\HutangReportExport;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Maatwebsite\Excel\Facades\Excel;
@@ -24,53 +23,61 @@ class LaporanHutangController extends Controller
         $search = $request->query('q');
         $perPage = $request->query('per_page', '10');
 
-
-        $transactionDateColumn = Schema::hasColumn('warehouse_stock_transactions', 'created_at')
-            ? 'created_at'
-            : '';
-            
-        $paidColumn = Schema::hasColumn('warehouse_stock_transactions', 'amount_paid')
-            ? 'amount_paid'
-            : 'paid';
-
-        $suppliers = WarehouseProduct::whereNotNull('supplier_name')
+        $suppliers = DB::table('warehouse_stock_logs')
+            ->whereNotNull('supplier_name')
             ->where('supplier_name', '!=', '')
             ->distinct()
             ->orderBy('supplier_name')
             ->pluck('supplier_name');
 
-        $query = WarehouseStockTransaction::query()
-            ->where('action_type', 'add')
-            ->when($status === 'lunas', fn ($q) => $q->where('remaining', '=', 0))
-            ->when($status === 'belum' || !$status, fn ($q) => $q->where('remaining', '>', 0))
-            ->when($start, fn ($q) => $q->whereDate($transactionDateColumn, '>=', $start))
-            ->when($end, fn ($q) => $q->whereDate($transactionDateColumn, '<=', $end))
-            ->when($supplierName, fn ($q) => $q->where('supplier_name', $supplierName))
-            ->when($tempo, function ($q) use ($tempo, $transactionDateColumn) {
+        $query = DB::table('warehouse_stock_logs')
+            ->leftJoin('cash_flows', function ($join) {
+                $join->on('cash_flows.reference_id', '=', 'warehouse_stock_logs.id')
+                    ->whereRaw("cash_flows.reference_type = ?", ['warehouse'])
+                    ->whereRaw("cash_flows.type = ?", ['expense']);
+            })
+            ->select([
+                'warehouse_stock_logs.id',
+                'warehouse_stock_logs.transaction_code',
+                'warehouse_stock_logs.created_at as tanggal',
+                'warehouse_stock_logs.supplier_name as supplier',
+                'warehouse_stock_logs.due_date as tempo',
+                'warehouse_stock_logs.total',
+                DB::raw('COALESCE(SUM(cash_flows.amount), 0) as sudah_dibayar'),
+                DB::raw('(warehouse_stock_logs.total - COALESCE(SUM(cash_flows.amount), 0)) as sisa_hutang')
+            ])
+            ->groupBy([
+                'warehouse_stock_logs.id',
+                'warehouse_stock_logs.transaction_code',
+                'warehouse_stock_logs.created_at',
+                'warehouse_stock_logs.supplier_name',
+                'warehouse_stock_logs.due_date',
+                'warehouse_stock_logs.total'
+            ])
+            ->when($status === 'lunas', fn ($q) => $q->havingRaw('(warehouse_stock_logs.total - COALESCE(SUM(cash_flows.amount), 0)) = 0'))
+            ->when($status === 'belum' || !$status, fn ($q) => $q->havingRaw('(warehouse_stock_logs.total - COALESCE(SUM(cash_flows.amount), 0)) > 0'))
+            ->when($start, fn ($q) => $q->whereDate('warehouse_stock_logs.created_at', '>=', $start))
+            ->when($end, fn ($q) => $q->whereDate('warehouse_stock_logs.created_at', '<=', $end))
+            ->when($supplierName, fn ($q) => $q->where('warehouse_stock_logs.supplier_name', $supplierName))
+            ->when($tempo, function ($q) use ($tempo) {
                 if ($tempo === 'net_30') {
-                    $q->whereRaw("(due_date::date - {$transactionDateColumn}::date) <= 30")
-                    ->whereRaw("(due_date::date - {$transactionDateColumn}::date) >= 0");
-                }
-                elseif ($tempo === 'net_60') {
-                    $q->whereRaw("(due_date::date - {$transactionDateColumn}::date) > 30")
-                    ->whereRaw("(due_date::date - {$transactionDateColumn}::date) <= 60");
-                }
-                elseif ($tempo === 'net_90') {
-                    $q->whereRaw("(due_date::date - {$transactionDateColumn}::date) > 60")
-                    ->whereRaw("(due_date::date - {$transactionDateColumn}::date) <= 90");
-                }
-                elseif ($tempo === 'sdt') {
+                    $q->whereRaw("(due_date::date - created_at::date) <= 30")
+                      ->whereRaw("(due_date::date - created_at::date) >= 0");
+                } elseif ($tempo === 'net_60') {
+                    $q->whereRaw("(due_date::date - created_at::date) > 30")
+                      ->whereRaw("(due_date::date - created_at::date) <= 60");
+                } elseif ($tempo === 'net_90') {
+                    $q->whereRaw("(due_date::date - created_at::date) > 60")
+                      ->whereRaw("(due_date::date - created_at::date) <= 90");
+                } elseif ($tempo === 'sdt') {
                     $q->whereDate('due_date', '<', now());
                 }
             })
-            ->orderByDesc($transactionDateColumn);
+            ->orderByDesc('warehouse_stock_logs.created_at');
 
-        $totalHutang = (clone $query)
-            ->reorder()
-            ->sum('remaining');
-
-        $totalTransaksi = (clone $query)->reorder()->sum('total');
-        $totalTerbayar = (clone $query)->reorder()->sum($paidColumn);
+        $totalHutang = (clone $query)->sum('sisa_hutang');
+        $totalTransaksi = (clone $query)->sum('total');
+        $totalTerbayar = (clone $query)->sum('sudah_dibayar');
 
         if ($perPage === 'all') {
             $collection = $query->get();
@@ -79,9 +86,7 @@ class LaporanHutangController extends Controller
                 $collection->count(),
                 $collection->count(),
                 1,
-                [
-                    'path' => LengthAwarePaginator::resolveCurrentPath(),
-                ]
+                ['path' => LengthAwarePaginator::resolveCurrentPath()]
             );
             $items->appends($request->query());
         } else {
@@ -129,38 +134,46 @@ class LaporanHutangController extends Controller
         $tempo = $request->query('tempo');
         $status = $request->query('status');
 
-        $transactionDateColumn = Schema::hasColumn('warehouse_stock_transactions', 'created_at')
-            ? 'created_at'
-            : '';
-
-        $query = WarehouseStockTransaction::query()
-            ->where('action_type', 'add')
-            ->when($status === 'lunas', fn ($q) => $q->where('remaining', '=', 0))
-            ->when($status === 'belum' || !$status, fn ($q) => $q->where('remaining', '>', 0))
-            ->when($start, fn ($q) => $q->whereDate($transactionDateColumn, '>=', $start))
-            ->when($end, fn ($q) => $q->whereDate($transactionDateColumn, '<=', $end))
-            ->when($supplierName, fn ($q) => $q->where('supplier_name', $supplierName))
-            ->when($tempo, function ($q) use ($tempo, $transactionDateColumn) {
+        $query = DB::table('warehouse_stock_logs')
+            ->leftJoin('cash_flows', function ($join) {
+                $join->on('cash_flows.reference_id', '=', 'warehouse_stock_logs.id')
+                     ->where('cash_flows.reference_type', '=', 'warehouse')
+                     ->where('cash_flows.type', '=', 'expense');
+            })
+            ->select([
+                'warehouse_stock_logs.id',
+                'warehouse_stock_logs.transaction_code',
+                'warehouse_stock_logs.created_at as tanggal',
+                'warehouse_stock_logs.supplier_name as supplier',
+                'warehouse_stock_logs.due_date as tempo',
+                'warehouse_stock_logs.total',
+                DB::raw('COALESCE(SUM(cash_flows.amount), 0) as sudah_dibayar'),
+                DB::raw('(warehouse_stock_logs.total - COALESCE(SUM(cash_flows.amount), 0)) as sisa_hutang')
+            ])
+            ->groupBy('warehouse_stock_logs.id')
+            ->when($status === 'lunas', fn ($q) => $q->havingRaw('(warehouse_stock_logs.total - COALESCE(SUM(cash_flows.amount), 0)) = 0'))
+            ->when($status === 'belum' || !$status, fn ($q) => $q->havingRaw('(warehouse_stock_logs.total - COALESCE(SUM(cash_flows.amount), 0)) > 0'))
+            ->when($start, fn ($q) => $q->whereDate('warehouse_stock_logs.created_at', '>=', $start))
+            ->when($end, fn ($q) => $q->whereDate('warehouse_stock_logs.created_at', '<=', $end))
+            ->when($supplierName, fn ($q) => $q->where('warehouse_stock_logs.supplier_name', $supplierName))
+            ->when($tempo, function ($q) use ($tempo) {
                 if ($tempo === 'net_30') {
-                    $q->whereRaw("(due_date::date - {$transactionDateColumn}::date) <= 30")
-                    ->whereRaw("(due_date::date - {$transactionDateColumn}::date) >= 0");
-                }
-                elseif ($tempo === 'net_60') {
-                    $q->whereRaw("(due_date::date - {$transactionDateColumn}::date) > 30")
-                    ->whereRaw("(due_date::date - {$transactionDateColumn}::date) <= 60");
-                }
-                elseif ($tempo === 'net_90') {
-                    $q->whereRaw("(due_date::date - {$transactionDateColumn}::date) > 60")
-                    ->whereRaw("(due_date::date - {$transactionDateColumn}::date) <= 90");
-                }
-                elseif ($tempo === 'sdt') {
+                    $q->whereRaw("(due_date::date - created_at::date) <= 30")
+                      ->whereRaw("(due_date::date - created_at::date) >= 0");
+                } elseif ($tempo === 'net_60') {
+                    $q->whereRaw("(due_date::date - created_at::date) > 30")
+                      ->whereRaw("(due_date::date - created_at::date) <= 60");
+                } elseif ($tempo === 'net_90') {
+                    $q->whereRaw("(due_date::date - created_at::date) > 60")
+                      ->whereRaw("(due_date::date - created_at::date) <= 90");
+                } elseif ($tempo === 'sdt') {
                     $q->whereDate('due_date', '<', now());
                 }
             })
-            ->orderByDesc($transactionDateColumn);
+            ->orderByDesc('warehouse_stock_logs.created_at');
 
         $items = $query->get();
-        $totalHutang = $items->sum('remaining');
+        $totalHutang = $items->sum('sisa_hutang');
 
         $pdf = Pdf::loadView('pdf.hutang_report', [
             'items' => $items,

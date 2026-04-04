@@ -68,7 +68,7 @@ class TransactionController extends Controller
             $query->where('cash_flows.type', $type);
         }
 
-        $cashflows = $query->orderByDesc('cash_flows.transaction_date')->paginate(20);
+        $cashflows = $query->orderByDesc('cash_flows.id')->paginate(20);
 
         $totalIncome = (clone $query)->where('cash_flows.type','income')->sum('cash_flows.amount');
         $totalExpense = (clone $query)->where('cash_flows.type','expense')->sum('cash_flows.amount');
@@ -265,7 +265,7 @@ class TransactionController extends Controller
             'checked_at' => now(),
         ]);
 
-        return back()->with('success','Transaksi berhasil dichek.');
+        return back()->with('success','Transaksi berhasil dicek.');
     }
 
     public function post_cashflow($id)
@@ -277,10 +277,67 @@ class TransactionController extends Controller
         }
 
         DB::transaction(function () use ($cashflow) {
-            if ($cashflow->type === 'income') {
-                app(\App\Services\AccountingService::class)->createCashInJournal($cashflow);
-            } else {
-                app(\App\Services\AccountingService::class)->createCashOutJournal($cashflow);
+            $accountingService = app(\App\Services\AccountingService::class);
+
+            if ($cashflow->type === 'income' && $cashflow->reference_type === null) {
+                // Tentukan akun bank/kas berdasarkan payment_method atau account_id
+                $bankAccountCode = $this->determineBankAccount($cashflow, 'income');
+
+                // Jurnal pemasukan kas biasa
+                $accountingService->createCashInJournal($cashflow, $bankAccountCode);
+            }
+            else if ($cashflow->type === 'income' && $cashflow->reference_type === 'pos') {
+                // PERBAIKAN: Handle partial payment untuk transaksi POS
+                $transaction = \App\Models\Transaction::find($cashflow->reference_id);
+                
+                if ($transaction) {
+                    // Selalu buat jurnal penjualan
+                    $accountingService->createSalesJournal($transaction);
+
+                    // Selalu buat jurnal HPP
+                    $accountingService->createHppJournal($transaction);
+                    
+                    // Jika ada pembayaran, buat jurnal pembayaran
+                    $paidAmount = $transaction->uang_diterima ?? 0;
+                    if ($paidAmount > 0) {
+                        // Tentukan akun bank/kas berdasarkan payment_method atau account_id
+                        $bankAccountCode = $this->determineBankAccount($transaction, 'transaction');
+                        $accountingService->createSalesPaymentJournal($transaction, $paidAmount, $bankAccountCode);
+                    }
+                } else {
+                    // Tentukan akun bank/kas berdasarkan payment_method atau account_id
+                    $bankAccountCode = $this->determineBankAccount($cashflow, 'income');
+
+                    $accountingService->createCashInJournal($cashflow, $bankAccountCode);
+                }
+            }
+            else if ($cashflow->type === 'expense' && $cashflow->reference_type === 'warehouse') {
+
+                // dump($cashflow->reference_id);
+                // \DB::enableQueryLog();
+
+                $warehouseLog = \App\Models\WarehouseStockLog::find($cashflow->reference_id);
+                // dd(\DB::getQueryLog());
+
+                if (! $warehouseLog) {
+                    throw new \Exception('Data warehouse_stock_logs tidak ditemukan untuk id: ' . $cashflow->reference_id);
+                }
+
+                // 1) Jurnal pembelian stok (Persediaan / Hutang)
+                $accountingService->createPurchaseJournal($warehouseLog);
+
+                // 2) Jika ada pembayaran via cashflow (dibayar lunas / partial), buat jurnal pelunasan hutang
+                $paidAmount = $warehouseLog->paid ?? 0;
+                if ($paidAmount > 0) {
+                    $bankAccountCode = $this->determineBankAccount($warehouseLog, 'warehouse');
+                    $accountingService->createPurchasePaymentJournal($warehouseLog, $paidAmount, $bankAccountCode);
+                }
+            }
+            else {
+                // Tentukan akun bank/kas berdasarkan payment_method atau account_id
+                $bankAccountCode = $this->determineBankAccount($cashflow, 'income');
+
+                $accountingService->createCashOutJournal($cashflow, $bankAccountCode);
             }
 
             $cashflow->update([
@@ -293,6 +350,57 @@ class TransactionController extends Controller
         return back()->with('success','Transaksi berhasil diposting.');
     }
 
+    /**
+     * Helper method untuk menentukan akun bank berdasarkan payment method dan account
+     *
+     * Prioritas:
+     * 1. Payment method (jika ada)
+     * 2. Account type (jika account_id ada)
+     * 3. Default ke Kas
+     *
+     * @param Transaction $transaction
+     * @return string COA code untuk akun bank/kas
+     */
+    private function determineBankAccount($transaction, $type): string
+    {
+        // PRIORITAS 1: Gunakan payment_method jika ada dan valid
+        if ($type == "transaction") {
+            $paymentMethod = $transaction->payment_method ?? null;            
+        }
+        else if ( ($type == "warehouse") || ($type == "income") ) {
+            $trx_account = \App\Models\Account::find($transaction->account_id);
+            $paymentMethod = $trx_account->type ?? null;            
+        }
+
+
+        if ($paymentMethod) {
+            return match($paymentMethod) {
+                'bank', 'transfer', 'bank_transfer', 'ewallet' => '1-1100',     // Bank
+                // 'credit_card' => '1-1020',           // Kartu Kredit
+                // 'ewallet' => '1-1030',               // E-wallet (sesuaikan COA Anda)
+                'cash' => '1-1000',                  // Kas
+                default => '1-1000',                 // Default Kas
+            };
+        }
+
+        // PRIORITAS 2: Jika ada account_id, gunakan type account
+        if ($transaction->account_id) {
+            $account = \App\Models\Account::find($transaction->account_id);
+            if ($account) {
+                $accountType = $account->type ?? 'cash';
+                return match($accountType) {
+                    'bank', 'ewallet' => '1-1100',
+                    // 'ewallet' => '1-1030',
+                    'cash' => '1-1000',
+                    default => '1-1000',
+                };
+            }
+        }
+
+        // DEFAULT: Kas
+        return '1-1000';
+    }
+
     public function void_cashflow($id)
     {
         $cashflow = CashFlow::findOrFail($id);
@@ -301,18 +409,41 @@ class TransactionController extends Controller
             return back()->with('error','Hanya transaksi posting yang bisa di-void.');
         }
 
-        DB::transaction(function () use ($cashflow) {
-            $accounting = \App\Models\Accounting::where('reference_type','cashflow')
-                ->where('reference_id',$cashflow->id)
-                ->where('is_reversal', false)
-                ->first();
+        // Tambahan validasi: jangan void dua kali
+        if ($cashflow->status_accounting === CashFlow::STATUS_VOID) {
+            return back()->with('error','Transaksi sudah pernah di-void.');
+        }
 
-            if (!$accounting) {
+        DB::transaction(function () use ($cashflow) {
+            $query = \App\Models\Accounting::where('is_reversal', false);
+
+            // Untuk transaksi POS, referensi jurnal ada di transaksi (reference_id = transaction_id)
+            if ($cashflow->reference_type === 'pos') {
+                $query->whereIn('reference_type', ['pos', 'pos_payment'])
+                      ->where('reference_id', $cashflow->reference_id);
+            }
+            // Untuk transaksi warehouse yang sudah diposting via jurnal warehouse
+            elseif ($cashflow->reference_type === 'warehouse') {
+                $query->whereIn('reference_type', ['warehouse', 'warehouse_payment'])
+                      ->where('reference_id', $cashflow->reference_id);
+            }
+            // Untuk cashflow biasa (income/expense), reference_id = cashflow id (jurnal cashflow_income/cashflow_expense)
+            else {
+                $query->whereIn('reference_type', ['cashflow_income', 'cashflow_expense', 'cashflow'])
+                      ->where('reference_id', $cashflow->id);
+            }
+
+            $accountings = $query->get();
+
+            if ($accountings->isEmpty()) {
                 throw new \Exception('Jurnal yang sesuai tidak ditemukan untuk void.');
             }
 
-            app(\App\Services\AccountingService::class)
-                ->createReversalJournal($accounting, 'Void cashflow #' . $cashflow->id);
+            $service = app(\App\Services\AccountingService::class);
+
+            foreach ($accountings as $accounting) {
+                $service->createReversalJournal($accounting, 'Void cashflow #' . $cashflow->id);
+            }
 
             $cashflow->update([
                 'status_accounting' => CashFlow::STATUS_VOID,

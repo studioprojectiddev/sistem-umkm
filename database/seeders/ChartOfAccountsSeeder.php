@@ -36,6 +36,7 @@ class ChartOfAccountsSeeder extends Seeder
             ['code' => '5-5000', 'name' => 'Beban Operasional', 'type' => 'expense', 'parent_id' => null, 'children' => []],
             ['code' => '5-5100', 'name' => 'Beban Gaji', 'type' => 'expense', 'parent_id' => null, 'children' => []],
             ['code' => '5-5200', 'name' => 'Beban Listrik & Air', 'type' => 'expense', 'parent_id' => null, 'children' => []],
+            ['code' => '5-5300', 'name' => 'HPP', 'type' => 'expense', 'parent_id' => null, 'children' => []],
         ];
 
         foreach ($accounts as $account) {

@@ -847,29 +847,29 @@ $saldo = $totalIncome - $totalExpense;
                     <td>
                         <div class="action-group">
 
-                            <a href="javascript:void(0)" 
-                            class="btn-action btn-edit btn-edit-income"
-                            data-id="{{ $c->id }}"
-                            data-type="{{ $c->type }}"
-                            data-category="{{ $c->category_id }}"
-                            data-account="{{ $c->account_id }}"
-                            data-amount="{{ $c->amount }}"
-                            data-date="{{ $c->transaction_date }}"
-                            data-description="{{ $c->description }}">
-                            ✏ Edit
-                            </a>
+                            @if( ($c->status_accounting === \App\Models\CashFlow::STATUS_WAITING) || ($c->status_accounting === \App\Models\CashFlow::STATUS_VOID) )
+                                <a href="javascript:void(0)" 
+                                    class="btn-action btn-edit btn-edit-income"
+                                    data-id="{{ $c->id }}"
+                                    data-type="{{ $c->type }}"
+                                    data-category="{{ $c->category_id }}"
+                                    data-account="{{ $c->account_id }}"
+                                    data-amount="{{ $c->amount }}"
+                                    data-date="{{ $c->transaction_date }}"
+                                    data-description="{{ $c->description }}">
+                                    ✏ Edit
+                                </a>
 
-                            <form action="{{ route('umkm.transaction.delete_income',$c->id) }}" 
-                                method="POST" 
-                                style="display:inline;">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn-action btn-delete">
-                                    🗑 Hapus
-                                </button>
-                            </form>
+                                <form action="{{ route('umkm.transaction.delete_income',$c->id) }}" 
+                                    method="POST" 
+                                    style="display:inline;">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn-action btn-delete">
+                                        🗑 Hapus
+                                    </button>
+                                </form>
 
-                            @if($c->status_accounting === \App\Models\CashFlow::STATUS_WAITING)
                                 <form action="{{ route('umkm.transaction.check_cashflow', $c->id) }}" method="POST" style="display:inline;">
                                     @csrf
                                     <button type="submit" class="btn-action btn-primary" style="background:#1a73e8; color:#fff;">✔ Check</button>
@@ -877,13 +877,31 @@ $saldo = $totalIncome - $totalExpense;
                             @endif
 
                             @if($c->status_accounting === \App\Models\CashFlow::STATUS_CHECKED)
+                                <a href="javascript:void(0)" 
+                                    class="btn-action btn-edit btn-edit-income"
+                                    data-id="{{ $c->id }}"
+                                    data-type="{{ $c->type }}"
+                                    data-category="{{ $c->category_id }}"
+                                    data-account="{{ $c->account_id }}"
+                                    data-amount="{{ $c->amount }}"
+                                    data-date="{{ $c->transaction_date }}"
+                                    data-description="{{ $c->description }}">
+                                    ✏ Edit
+                                </a>
+
+                                <form action="{{ route('umkm.transaction.delete_income',$c->id) }}" 
+                                    method="POST" 
+                                    style="display:inline;">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn-action btn-delete">
+                                        🗑 Hapus
+                                    </button>
+                                </form>
+
                                 <form action="{{ route('umkm.transaction.post_cashflow', $c->id) }}" method="POST" style="display:inline;">
                                     @csrf
                                     <button type="submit" class="btn-action btn-primary" style="background:#0ea5e9; color:#fff;">🚀 Post</button>
-                                </form>
-                                <form action="{{ route('umkm.transaction.void_cashflow', $c->id) }}" method="POST" style="display:inline;">
-                                    @csrf
-                                    <button type="submit" class="btn-action btn-delete" style="background:#f43f5e; color:#fff;">❌ Void</button>
                                 </form>
                             @endif
 

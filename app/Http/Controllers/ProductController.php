@@ -1720,6 +1720,7 @@ class ProductController extends Controller
 
                 'avg_cost_before' => $avgBefore,
                 'avg_cost_after'  => $avgAfter,
+                'supplier_name'  => $request->supplier_name ?? null,
 
                 'total' => $actionType === 'add' ? $total : null,
                 'paid'  => $actionType === 'add' ? $paid : 0,

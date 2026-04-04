@@ -20,12 +20,12 @@ class ProfitLossReportExport implements FromView
 
     private function queryBase()
     {
-        return DB::table('accounting')
-            ->join('accounting_details', 'accounting.id', '=', 'accounting_details.accounting_id')
-            ->join('accounts', 'accounts.id', '=', 'accounting_details.account_id')
-            ->whereIn('accounting.status', ['posted', 'posting'])
-            ->when($this->start, fn ($q) => $q->whereDate('accounting.transaction_date', '>=', $this->start))
-            ->when($this->end, fn ($q) => $q->whereDate('accounting.transaction_date', '<=', $this->end));
+        return DB::table('accountings')
+            ->join('accounting_details', 'accountings.id', '=', 'accounting_details.accounting_id')
+            ->join('chart_of_accounts', 'chart_of_accounts.id', '=', 'accounting_details.coa_id')
+            ->where('accountings.status_accounting', 'posting')
+            ->when($this->start, fn ($q) => $q->whereDate('accountings.created_date', '>=', $this->start))
+            ->when($this->end, fn ($q) => $q->whereDate('accountings.created_date', '<=', $this->end));
     }
 
     public function view(): View
@@ -33,47 +33,38 @@ class ProfitLossReportExport implements FromView
         $base = $this->queryBase();
 
         $penjualan = (clone $base)
+            ->where('chart_of_accounts.type', 'revenue')
             ->where(function ($q) {
-                $q->where('accounts.type_account', 'revenue');
-            })
-            ->where(function ($q) {
-                $q->whereRaw('LOWER(accounts.name) LIKE ?', ['%jual%'])
-                    ->orWhereRaw('LOWER(accounts.name) LIKE ?', ['%penjualan%']);
+                $q->whereRaw('LOWER(chart_of_accounts.name) LIKE ?', ['%jual%'])
+                    ->orWhereRaw('LOWER(chart_of_accounts.name) LIKE ?', ['%penjualan%']);
             })
             ->selectRaw('COALESCE(SUM(accounting_details.credit), 0) - COALESCE(SUM(accounting_details.debit), 0) AS value')
             ->value('value') ?: 0;
 
         $revenueTotal = (clone $base)
-            ->where(function ($q) {
-                $q->where('accounts.type_account', 'revenue');
-            })
+            ->where('chart_of_accounts.type', 'revenue')
             ->selectRaw('COALESCE(SUM(accounting_details.credit), 0) - COALESCE(SUM(accounting_details.debit), 0) AS value')
             ->value('value') ?: 0;
 
         $pendapatanLain = $revenueTotal - $penjualan;
 
         $hpp = (clone $base)
-            ->where(function ($q) {
-                $q->where('accounts.type_account', 'cogs')->orWhere('accounts.type_account', 'cost_of_goods_sold');
-            })
+            ->where('chart_of_accounts.type', 'expense')
+            ->whereRaw('LOWER(chart_of_accounts.name) LIKE ?', ['%hpp%'])
             ->selectRaw('COALESCE(SUM(accounting_details.debit),0) - COALESCE(SUM(accounting_details.credit),0) AS value')
             ->value('value') ?: 0;
 
         $bebanOperasional = (clone $base)
+            ->where('chart_of_accounts.type', 'expense')
             ->where(function ($q) {
-                $q->where('accounts.type_account', 'expense');
-            })
-            ->where(function ($q) {
-                $q->whereRaw('LOWER(accounts.name) LIKE ?', ['%operasional%'])
-                    ->orWhereRaw('LOWER(accounts.name) LIKE ?', ['%beban%']);
+                $q->whereRaw('LOWER(chart_of_accounts.name) LIKE ?', ['%operasional%'])
+                    ->orWhereRaw('LOWER(chart_of_accounts.name) LIKE ?', ['%beban%']);
             })
             ->selectRaw('COALESCE(SUM(accounting_details.debit),0) - COALESCE(SUM(accounting_details.credit),0) AS value')
             ->value('value') ?: 0;
 
         $bebanTotal = (clone $base)
-            ->where(function ($q) {
-                $q->where('accounts.type_account', 'expense');
-            })
+            ->where('chart_of_accounts.type', 'expense')
             ->selectRaw('COALESCE(SUM(accounting_details.debit),0) - COALESCE(SUM(accounting_details.credit),0) AS value')
             ->value('value') ?: 0;
 

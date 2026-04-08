@@ -64,7 +64,7 @@
                 <li><a href="" >Dashboard Keuangan</a></li>
                 <li><a href="{{ route('umkm.report.laba_rugi') }}" class="{{ request()->routeIs('umkm.report.laba_rugi') ? 'active' : '' }}">Laba rugi</a></li>
                 <li><a href="{{ route('umkm.report.neraca') }}" class="{{ request()->routeIs('umkm.report.neraca') ? 'active' : '' }}">Neraca</a></li>
-                <li><a href="" >Cashflow</a></li>
+                <li><a href="{{ route('umkm.report.cashflow') }}" class="{{ request()->routeIs('umkm.report.cashflow') ? 'active' : '' }}">Cashflow</a></li>
                 <li><a href="{{ route('umkm.report.piutang') }}" class="{{ request()->routeIs('umkm.report.piutang') ? 'active' : '' }}" >Piutang</a></li>
                 <li><a href="{{ route('umkm.report.hutang') }}" class="{{ request()->routeIs('umkm.report.hutang') ? 'active' : '' }}" >Hutang</a></li>
                 <li><a href="{{ route('umkm.report.rekap_rekening') }}" class="{{ request()->routeIs('umkm.report.rekap_rekening') ? 'active' : '' }}">Rekap Rekening</a></li>

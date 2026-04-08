@@ -14,6 +14,7 @@ use App\Http\Controllers\LaporanLabaRugiController;
 use App\Http\Controllers\LaporanNeracaController;
 use App\Http\Controllers\LaporanStokController;
 use App\Http\Controllers\LaporanRekapRekeningController;
+use App\Http\Controllers\LaporanArusKasController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\InsightController;
 
@@ -121,6 +122,10 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::get('/umkm/laporan-rekap-rekening', [LaporanRekapRekeningController::class, 'index'])->name('umkm.report.rekap_rekening');
     Route::get('/umkm/laporan-rekap-rekening/export-excel', [LaporanRekapRekeningController::class, 'exportExcel'])->name('umkm.report.rekap_rekening.export_excel');
     Route::get('/umkm/laporan-rekap-rekening/export-pdf', [LaporanRekapRekeningController::class, 'exportPdf'])->name('umkm.report.rekap_rekening.export_pdf');
+
+    Route::get('/umkm/laporan-arus-kas', [LaporanArusKasController::class, 'index'])->name('umkm.report.cashflow');
+    Route::get('/umkm/laporan-arus-kas/export-excel', [LaporanArusKasController::class, 'exportExcel'])->name('umkm.report.cashflow.export_excel');
+    Route::get('/umkm/laporan-arus-kas/export-pdf', [LaporanArusKasController::class, 'exportPdf'])->name('umkm.report.cashflow.export_pdf');
 
     Route::post('/umkm/pos/set-outlet', [PosController::class, 'setOutlet']);
 

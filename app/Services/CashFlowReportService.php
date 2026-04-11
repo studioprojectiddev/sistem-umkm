@@ -35,7 +35,7 @@ class CashFlowReportService
 
         $categoryMap = [
             'operasi' => [
-                'label' => 'Aktivitas Operasi',
+                'label' => 'Aktivitas Operasional',
                 'reference_types' => ['pos', 'warehouse'],
             ],
             'investasi' => [

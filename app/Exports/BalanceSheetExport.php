@@ -33,10 +33,22 @@ class BalanceSheetExport implements FromView
             ->map(function ($item) {
                 $debitSum = (float) $item->debit_sum;
                 $creditSum = (float) $item->credit_sum;
-                $isAsset = $item->type === 'asset';
-                $saldo = $isAsset
+                $saldo = in_array($item->type, ['asset', 'expense'], true)
                     ? $debitSum - $creditSum
                     : $creditSum - $debitSum;
+
+                if (in_array($item->type, ['asset', 'expense'], true)) {
+                    return (object) [
+                        'id' => $item->id,
+                        'code' => $item->code,
+                        'name' => $item->name,
+                        'type' => $item->type,
+                        'parent_name' => $item->parent_name,
+                        'debit' => $saldo >= 0 ? $saldo : 0,
+                        'credit' => $saldo < 0 ? abs($saldo) : 0,
+                        'saldo' => $saldo,
+                    ];
+                }
 
                 return (object) [
                     'id' => $item->id,
@@ -44,8 +56,8 @@ class BalanceSheetExport implements FromView
                     'name' => $item->name,
                     'type' => $item->type,
                     'parent_name' => $item->parent_name,
-                    'debit' => $saldo >= 0 ? $saldo : 0,
-                    'credit' => $saldo < 0 ? abs($saldo) : 0,
+                    'debit' => $saldo < 0 ? abs($saldo) : 0,
+                    'credit' => $saldo >= 0 ? $saldo : 0,
                     'saldo' => $saldo,
                 ];
             });
@@ -59,8 +71,10 @@ class BalanceSheetExport implements FromView
         $liabilityGroups = $this->buildSection($rows->where('type', 'liability'), 'liability');
         $equityGroups = $this->buildSection($rows->where('type', 'equity'), 'equity');
         $revenueGroups = $this->buildSection($rows->where('type', 'revenue'), 'equity');
+        $expenseGroups = $this->buildSection($rows->where('type', 'expense'), 'equity');
 
         $equityGroups = $this->mergeGroups($equityGroups, $revenueGroups);
+        $equityGroups = $this->mergeGroups($equityGroups, $expenseGroups);
 
         $data = [
             'assets' => $assetGroups,

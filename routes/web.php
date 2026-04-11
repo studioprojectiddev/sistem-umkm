@@ -98,6 +98,7 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::get('/umkm/pos/receipt/{id}', [PosController::class, 'receipt'])->name('umkm.pos.receipt');
     Route::get('/pos/suggest', [PosController::class, 'suggest']);
 
+    Route::get('/umkm/pos', [PosController::class, 'index'])->name('umkm.pos.index');
     Route::get('/umkm/laporan-penjualan', [ReportPenjualanController::class, 'index'])->name('umkm.report.sales');
     Route::get('/umkm/laporan-penjualan/export-excel', [ReportPenjualanController::class, 'exportExcel'])->name('umkm.report.sales.export_excel');
     Route::get('/umkm/laporan-penjualan/export-pdf', [ReportPenjualanController::class, 'exportPdf'])->name('umkm.report.sales.export_pdf');

@@ -19,6 +19,7 @@ use App\Models\WarehouseStockTransaction;
 use App\Models\TransactionItem;
 use App\Models\Account;
 use App\Models\CashFlow;
+use App\Models\ProductRecipe;
 use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 use Picqer\Barcode\BarcodeGeneratorPNG;
@@ -34,23 +35,33 @@ class ProductController extends Controller
      */
     public function index(Request $request, $id = null)
     {
+        $type = $request->get('type');
+
+        if ($type && !in_array($type, ['product', 'material'])) {
+            $type = null;
+        }
+
         // ==========================
         // 🔹 Query daftar produk
         // ==========================
-        $query = Product::with('category')
-            ->where('user_id', auth()->id());
+        $query = Product::with([
+            'category',
+            'recipes.material' // 🔥 load resep + bahan
+        ])
+        ->where('user_id', auth()->id());
 
-        // Filter berdasarkan nama produk
+        if ($type) {
+            $query->where('type', $type);
+        }
+
         if ($request->filled('name')) {
             $query->where('name', 'like', '%' . $request->name . '%');
         }
 
-        // Filter berdasarkan kategori
         if ($request->filled('category_id')) {
             $query->where('category_id', $request->category_id);
         }
 
-        // Filter berdasarkan status aktif/tidak aktif produk
         if ($request->filled('is_active')) {
             $query->where('is_active', $request->is_active);
         }
@@ -61,19 +72,17 @@ class ProductController extends Controller
 
         $categories = Category::orderBy('name')->get();
 
-
         // ==========================
         // 🔹 Query daftar variasi
         // ==========================
         $variations = ProductVariation::with([
-                'product:id,name',
-                'options.attribute'
-            ])
-            ->whereHas('product', function ($q) {
-                $q->where('user_id', auth()->id());
-            });
+            'product:id,name',
+            'options.attribute'
+        ])
+        ->whereHas('product', function ($q) {
+            $q->where('user_id', auth()->id());
+        });
 
-        // Filter by Nama Produk saja
         if ($request->filled('product_name')) {
             $search = $request->product_name;
             $variations->whereHas('product', function ($q) use ($search) {
@@ -81,7 +90,6 @@ class ProductController extends Controller
             });
         }
 
-        // Filter by Attribute
         if ($request->filled('attribute')) {
             $attrId = $request->attribute;
             $variations->whereHas('options', function ($q) use ($attrId) {
@@ -89,7 +97,6 @@ class ProductController extends Controller
             });
         }
 
-        // Filter berdasarkan status aktif/tidak aktif variasi
         if ($request->filled('variation_active')) {
             $variations->where('is_active', $request->variation_active);
         }
@@ -98,22 +105,27 @@ class ProductController extends Controller
             ->paginate(10, ['*'], 'variations_page')
             ->withQueryString();
 
-
         // ==========================
         // 🔹 Data tambahan
         // ==========================
         $variationAttributes = VariationAttribute::with('options')->get();
         $variationOptions = VariationOption::all();
 
-        // 🔹 Kalau ada ID (mode edit), ambil produk + variasinya
+        // 🔹 Mode edit
         $product = null;
         if ($id) {
             $product = Product::with([
-                'variations.options.attribute'
+                'variations.options.attribute',
+                'recipes.material' // 🔥 biar edit juga bawa resep
             ])
             ->where('user_id', auth()->id())
             ->findOrFail($id);
         }
+
+        // 🔥 ambil bahan untuk dropdown resep
+        $materials = Product::where('type', 'material')
+            ->where('user_id', auth()->id())
+            ->get();
 
         // ==========================
         // 🔹 Return ke view
@@ -124,7 +136,8 @@ class ProductController extends Controller
             'variations',
             'variationAttributes',
             'variationOptions',
-            'product'
+            'product',
+            'materials'
         ));
     }
 
@@ -144,6 +157,7 @@ class ProductController extends Controller
             'discount_price' => 'nullable|numeric',
             'cost_price'     => 'nullable|numeric',
             'unit'           => 'nullable|string|max:50',
+            'type'           => 'required|in:product,material',
             'product_type'   => 'required|in:goods,service',
             'expiry_date'    => 'nullable|date',
             'batch_number'   => 'nullable|string',
@@ -193,6 +207,12 @@ class ProductController extends Controller
         $generator = new BarcodeGeneratorPNG();
         file_put_contents($barcodeFile, $generator->getBarcode($barcodeValue, $generator::TYPE_CODE_128));
 
+        $type = $request->type;
+
+        if (!in_array($type, ['product', 'material'])) {
+            $type = 'product';
+        }
+
         // Simpan produk
         Product::create([
             'idpenginput'     => auth()->id(),
@@ -201,6 +221,7 @@ class ProductController extends Controller
             'sku'             => $request->sku,
             'barcode'         => $barcodeValue,
             'description'     => $request->description,
+            'type'            => $type,
             'user_id'         => auth()->id(),
             'category_id'     => $request->category_id,
             'price'           => $request->price,
@@ -244,6 +265,7 @@ class ProductController extends Controller
             'discount_price' => 'nullable|numeric',
             'cost_price'     => 'nullable|numeric',
             'unit'           => 'nullable|string|max:50',
+            'type'           => 'required|in:product,material',
             'product_type'   => 'required|in:goods,service',
             'expiry_date'    => 'nullable|date',
             'batch_number'   => 'nullable|string',
@@ -290,6 +312,12 @@ class ProductController extends Controller
             $product->image = 'assets/images/product/' . $filename;
         }
 
+        $type = $request->type;
+
+        if (!in_array($type, ['product', 'material'])) {
+            $type = 'product';
+        }
+
         // Update data lainnya
         $product->name           = $request->name;
         $product->slug           = $slug;
@@ -302,6 +330,7 @@ class ProductController extends Controller
         $product->cost_price     = $request->cost_price;
         $product->unit           = $request->unit ?? 'pcs';
         $product->product_type   = $request->product_type;
+        $product->type           = $type;
         $product->expiry_date    = $request->expiry_date;
         $product->batch_number   = $request->batch_number;
         $product->is_active      = $request->is_active ?? true;
@@ -1285,6 +1314,7 @@ class ProductController extends Controller
             ->leftJoin('warehouses', 'warehouses.id', '=', 'warehouse_products.warehouse_id')
             ->select(
                 'products.id',
+                'products.type',
                 'warehouses.name as warehouse_name',
                 'warehouses.type as warehouse_type',
                 'products.id as product_id',
@@ -1295,6 +1325,7 @@ class ProductController extends Controller
                 'warehouse_products.warehouse_id',
                 'warehouse_products.rack_position'
             )
+            ->whereIn('products.type', ['material', 'product'])
             ->whereNull('warehouse_products.variation_id')
             ->where(function ($q) {
                 $q->where('warehouses.type', 'warehouse')
@@ -1317,6 +1348,7 @@ class ProductController extends Controller
                 'products.name as name',
                 'products.sku',
                 'products.price',
+                'products.type',
                 'product_variations.price as variation_name',
                 'warehouse_products.warehouse_id',
                 'product_variations.id as variation_id',
@@ -1324,7 +1356,7 @@ class ProductController extends Controller
             )
             ->where(function ($q) {
                 $q->where('warehouses.type', 'warehouse')
-                ->orWhereNull('warehouses.type'); // produk yang belum punya gudang tetap tampil
+                ->orWhereNull('warehouses.type');
             })
             ->distinct()
             ->get();
@@ -1410,12 +1442,12 @@ class ProductController extends Controller
             $v->stock_current = max(0, ($v->stock_in - $v->stock_out));
 
             $latestMinStock = DB::table('warehouse_products')
-                ->where('warehouse_id', $p->warehouse_id)
-                ->where('product_id', $p->product_id)
+                ->where('warehouse_id', $v->warehouse_id)
+                ->where('product_id', $v->product_id)
                 ->orderByDesc('id')
                 ->value('min_stock');
 
-            $p->min_stock = $latestMinStock ?? 0;
+            $v->min_stock = $latestMinStock ?? 0;
         }
 
         // === 5️⃣ Gabungkan dropdown produk ===
@@ -2188,6 +2220,30 @@ class ProductController extends Controller
                 'message' => $e->getMessage()
             ]);
         }
+    }
+
+    public function storeRecipe(Request $request)
+    {
+        $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'materials' => 'required|array',
+            'materials.*.material_id' => 'required|exists:products,id',
+            'materials.*.qty' => 'required|numeric|min:0.01',
+        ]);
+
+        // hapus resep lama
+        ProductRecipe::where('product_id', $request->product_id)->delete();
+
+        // simpan baru
+        foreach ($request->materials as $item) {
+            ProductRecipe::create([
+                'product_id' => $request->product_id,
+                'material_id' => $item['material_id'],
+                'qty' => $item['qty'],
+            ]);
+        }
+
+        return back()->with('success', 'Resep berhasil disimpan');
     }
 
 }

@@ -15,14 +15,11 @@ use App\Http\Controllers\LaporanStokController;
 use App\Http\Controllers\LaporanRekapRekeningController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\InsightController;
+use App\Http\Controllers\DashboardController;
 
 Route::get('/', function () {
     return redirect()->route('login');
 });
-
-Route::get('/dashboard', function () {
-    return view('dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::get('/register-umkm', [RegisteredUserController::class, 'createUmkm'])->name('register.umkm');
 Route::post('/register-umkm', [RegisteredUserController::class, 'storeUmkm']);
@@ -37,6 +34,10 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
     Route::get('/admin', fn() => 'Halaman Admin');
 });
 
+Route::middleware(['auth'])->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+});
+
 Route::middleware(['auth','umkm'])->group(function () {
     // Produk UMKM
     Route::get('/umkm/product', [ProductController::class, 'index'])->name('umkm.product');
@@ -47,6 +48,8 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::put('/umkm/product/{id}', [ProductController::class, 'update'])->name('umkm.product.update');
     Route::delete('/umkm/product/{id}', [ProductController::class, 'destroy'])->name('umkm.product.destroy');
     Route::get('/productdetail/{id}', [ProductController::class, 'detail'])->name('umkm.product.detail');
+    Route::post('/umkm/product-recipe', [ProductController::class, 'storeRecipe']) ->name('umkm.product.storeRecipe');
+
     Route::get('/managementstock', [ProductController::class, 'managementstock'])->name('umkm.product.management_stock');
     Route::put('/managementstock/{id}', [ProductController::class, 'managementupdate'])->name('umkm.product.management_update');
     Route::get('/insight', [ProductController::class, 'insight'])->name('umkm.product.insight');
@@ -85,7 +88,7 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::get('/umkm/pos/products', [PosController::class, 'getProducts'])->name('umkm.pos.products');
     Route::post('/umkm/pos/add-variation/{id}', [PosController::class, 'addVariationToCart'])->name('umkm.pos.addVariation');
     Route::post('/umkm/pos/discount/update', [PosController::class, 'updateDiscount'])->name('umkm.pos.discount');
-    Route::post('/umkm/pos/stock/add', [PosController::class, 'addStock'])->name('umkm.pos.add');
+    Route::post('/umkm/pos/stock/add', [PosController::class, 'addStock'])->name('umkm.pos.stock.add');
     Route::post('/api/stock/update', [PosController::class, 'storeTransaction'])->name('stock.transaction.store');
     Route::get('/api/stock/transactions', [PosController::class, 'listTransactions'])->name('stock.transaction.list');
     Route::get('/stock/summary', [PosController::class, 'summary']);
@@ -172,6 +175,8 @@ Route::middleware(['auth','umkm'])->group(function () {
 
     Route::get('/customer', [CustomerController::class, 'index'])->name('umkm.customer.data');
     Route::post('/umkm/customer/bayar', [CustomerController::class, 'bayar']);
+    Route::get('/customer/segmentasi', [CustomerController::class, 'segmentasi'])->name('umkm.customer.segmentasi');
+    Route::get('/customer/campaign', [CustomerController::class, 'campaign'])->name('umkm.customer.campaign');
 
     Route::get('/penjualan-pelanggan', [InsightController::class, 'penjualan'])->name('umkm.insight.penjualan');
 });

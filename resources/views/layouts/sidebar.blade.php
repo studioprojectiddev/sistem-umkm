@@ -53,8 +53,8 @@
             <a href="#"><i class='bx  bx-user icon'  ></i>  Pelanggan (CRM Mini) <i class='bx bx-chevron-right icon-right'></i></a>
             <ul class="side-dropdown">
                 <li><a href="{{ route('umkm.customer.data') }}">Data pelanggan</a></li>
-                {{-- <li><a href="" >Segmentasi</a></li>
-                <li><a href="" >Broadcast promo/WA</a></li> --}}
+                <li><a href="{{ route('umkm.customer.segmentasi') }}" >Segmentasi</a></li>
+                <li><a href="{{ route('umkm.customer.campaign') }}" >Campaign Pelanggan</a></li>
             </ul>
         </li>
 

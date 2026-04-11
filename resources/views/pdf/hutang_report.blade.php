@@ -48,19 +48,16 @@
         <tbody>
             @foreach($items as $item)
                 @php
-                    $paid = $item->amount_paid ?? $item->paid ?? 0;
-                    $remaining = max(0, $item->total - $paid);
-                    $statusLabel = $remaining > 0 ? 'Belum Lunas' : 'Lunas';
-                    $transactionDate = $item->transaction_date ?? $item->created_at;
+                    $statusLabel = $item->sisa_hutang > 0 ? 'Belum Lunas' : 'Lunas';
                 @endphp
                 <tr>
-                    <td>{{ $transactionDate ? \Carbon\Carbon::parse($transactionDate)->format('d/m/Y') : '-' }}</td>
-                    <td>{{ $item->id }}</td>
-                    <td>{{ $item->supplier_name ?: '-' }}</td>
-                    <td>{{ $item->due_date ? \Carbon\Carbon::parse($item->due_date)->format('d/m/Y') : '-' }}</td>
+                    <td>{{ $item->tanggal ? \Carbon\Carbon::parse($item->tanggal)->format('d/m/Y') : '-' }}</td>
+                    <td>{{ $item->transaction_code ?: $item->id }}</td>
+                    <td>{{ $item->supplier ?: '-' }}</td>
+                    <td>{{ $item->tempo ? \Carbon\Carbon::parse($item->tempo)->format('d/m/Y') : '-' }}</td>
                     <td class="text-right">Rp {{ number_format($item->total, 0, ',', '.') }}</td>
-                    <td class="text-right">Rp {{ number_format($paid, 0, ',', '.') }}</td>
-                    <td class="text-right">Rp {{ number_format($remaining, 0, ',', '.') }}</td>
+                    <td class="text-right">Rp {{ number_format($item->sudah_dibayar, 0, ',', '.') }}</td>
+                    <td class="text-right">Rp {{ number_format($item->sisa_hutang, 0, ',', '.') }}</td>
                     <td>{{ $statusLabel }}</td>
                 </tr>
             @endforeach

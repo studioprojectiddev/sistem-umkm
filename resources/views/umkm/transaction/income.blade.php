@@ -782,7 +782,9 @@ $saldo = $totalIncome - $totalExpense;
                     <th>Tanggal</th>
                     <th>Tipe</th>
                     <th>Kategori</th>
+                    <th>Status</th>
                     <th>Nominal</th>
+                    <th>Dibayar</th>
                     <th>Keterangan</th>
                     <th>Aksi</th>
                 </tr>
@@ -804,8 +806,39 @@ $saldo = $totalIncome - $totalExpense;
                     <td>{{ $c->category->name ?? '-' }}</td>
 
                     <td>
+                        @php
+                            $statusLabel = 'Unknown';
+                            $statusClass = 'badge-expense';
+
+                            if ($c->status_accounting === \App\Models\CashFlow::STATUS_WAITING) {
+                                $statusLabel = 'Waiting Check';
+                                $statusClass = 'badge-income';
+                            } elseif ($c->status_accounting === \App\Models\CashFlow::STATUS_CHECKED) {
+                                $statusLabel = 'Checked';
+                                $statusClass = 'badge-income';
+                            } elseif ($c->status_accounting === \App\Models\CashFlow::STATUS_POSTING) {
+                                $statusLabel = 'Posted';
+                                $statusClass = 'badge-income';
+                            } elseif ($c->status_accounting === \App\Models\CashFlow::STATUS_VOID) {
+                                $statusLabel = 'Void';
+                                $statusClass = 'badge-expense';
+                            }
+                        @endphp
+
+                        <span class="{{ $statusClass }}" style="padding:4px 10px;border-radius:6px;font-size:0.8rem;">
+                            {{ $statusLabel }}
+                        </span>
+                    </td>
+
+                    <td>
                         <strong class="{{ $c->type=='income' ? 'text-success' : 'text-danger' }}">
-                            Rp{{ number_format($c->amount,0,',','.') }}
+                            Rp{{ number_format($c->nominal,0,',','.') }}
+                        </strong>
+                    </td>
+
+                    <td>
+                        <strong class="{{ $c->type=='income' ? 'text-success' : 'text-danger' }}">
+                            Rp{{ number_format($c->dibayar,0,',','.') }}
                         </strong>
                     </td>
 
@@ -814,27 +847,70 @@ $saldo = $totalIncome - $totalExpense;
                     <td>
                         <div class="action-group">
 
-                            <a href="javascript:void(0)" 
-                            class="btn-action btn-edit btn-edit-income"
-                            data-id="{{ $c->id }}"
-                            data-type="{{ $c->type }}"
-                            data-category="{{ $c->category_id }}"
-                            data-account="{{ $c->account_id }}"
-                            data-amount="{{ $c->amount }}"
-                            data-date="{{ $c->transaction_date }}"
-                            data-description="{{ $c->description }}">
-                            ✏ Edit
-                            </a>
+                            @if( ($c->status_accounting === \App\Models\CashFlow::STATUS_WAITING) || ($c->status_accounting === \App\Models\CashFlow::STATUS_VOID) )
+                                <a href="javascript:void(0)" 
+                                    class="btn-action btn-edit btn-edit-income"
+                                    data-id="{{ $c->id }}"
+                                    data-type="{{ $c->type }}"
+                                    data-category="{{ $c->category_id }}"
+                                    data-account="{{ $c->account_id }}"
+                                    data-amount="{{ $c->amount }}"
+                                    data-date="{{ $c->transaction_date }}"
+                                    data-description="{{ $c->description }}">
+                                    ✏ Edit
+                                </a>
 
-                            <form action="{{ route('umkm.transaction.delete_income',$c->id) }}" 
-                                method="POST" 
-                                style="display:inline;">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn-action btn-delete">
-                                    🗑 Hapus
-                                </button>
-                            </form>
+                                <form action="{{ route('umkm.transaction.delete_income',$c->id) }}" 
+                                    method="POST" 
+                                    style="display:inline;">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn-action btn-delete">
+                                        🗑 Hapus
+                                    </button>
+                                </form>
+
+                                <form action="{{ route('umkm.transaction.check_cashflow', $c->id) }}" method="POST" style="display:inline;">
+                                    @csrf
+                                    <button type="submit" class="btn-action btn-primary" style="background:#1a73e8; color:#fff;">✔ Check</button>
+                                </form>
+                            @endif
+
+                            @if($c->status_accounting === \App\Models\CashFlow::STATUS_CHECKED)
+                                <a href="javascript:void(0)" 
+                                    class="btn-action btn-edit btn-edit-income"
+                                    data-id="{{ $c->id }}"
+                                    data-type="{{ $c->type }}"
+                                    data-category="{{ $c->category_id }}"
+                                    data-account="{{ $c->account_id }}"
+                                    data-amount="{{ $c->amount }}"
+                                    data-date="{{ $c->transaction_date }}"
+                                    data-description="{{ $c->description }}">
+                                    ✏ Edit
+                                </a>
+
+                                <form action="{{ route('umkm.transaction.delete_income',$c->id) }}" 
+                                    method="POST" 
+                                    style="display:inline;">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn-action btn-delete">
+                                        🗑 Hapus
+                                    </button>
+                                </form>
+
+                                <form action="{{ route('umkm.transaction.post_cashflow', $c->id) }}" method="POST" style="display:inline;">
+                                    @csrf
+                                    <button type="submit" class="btn-action btn-primary" style="background:#0ea5e9; color:#fff;">🚀 Post</button>
+                                </form>
+                            @endif
+
+                            @if($c->status_accounting === \App\Models\CashFlow::STATUS_POSTING)
+                                <form action="{{ route('umkm.transaction.void_cashflow', $c->id) }}" method="POST" style="display:inline;">
+                                    @csrf
+                                    <button type="submit" class="btn-action btn-delete" style="background:#f43f5e; color:#fff;">❌ Void</button>
+                                </form>
+                            @endif
 
                             <a href="{{ route('umkm.transaction.trash') }}" 
                             class="btn-action btn-trash">
@@ -847,7 +923,7 @@ $saldo = $totalIncome - $totalExpense;
 
                 @empty
                 <tr>
-                    <td colspan="6" style="text-align:center;">
+                    <td colspan="7" style="text-align:center;">
                         Belum ada transaksi
                     </td>
                 </tr>

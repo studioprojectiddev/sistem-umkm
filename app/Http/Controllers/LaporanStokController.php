@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use App\Models\Product;
 use App\Models\WarehouseProduct;
-use App\Models\WarehouseStockTransaction;
+use App\Models\WarehouseStockLog;
 use App\Exports\StokReportExport;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Maatwebsite\Excel\Facades\Excel;
@@ -22,49 +22,7 @@ class LaporanStokController extends Controller
 
         $products = Product::orderBy('name')->pluck('name', 'id');
 
-        $query = WarehouseStockTransaction::query()
-            ->with(['product', 'variation'])
-            ->when($start, fn ($q) => $q->whereDate('created_at', '>=', $start))
-            ->when($end, fn ($q) => $q->whereDate('created_at', '<=', $end))
-            ->when($productId, fn ($q) => $q->where('product_id', $productId))
-            ->orderBy('created_at');
-
-        $items = $query->get();
-
-        $warehouseProductCosts = WarehouseProduct::query()
-            ->when($productId, fn ($q) => $q->where('product_id', $productId))
-            ->get()
-            ->keyBy(fn ($w) => $w->warehouse_id . '_' . $w->product_id . '_' . ($w->variation_id ?? 0));
-
-        // Hitung saldo per produk/variasi
-        $balances = [];
-        $items = $items->map(function ($item) use (&$balances, $warehouseProductCosts) {
-            $key = $item->warehouse_id . '_' . $item->product_id . '_' . ($item->variation_id ?? 0);
-            $stok_awal = $balances[$key] ?? 0;
-            $in = $item->action_type === 'add' ? $item->quantity : 0;
-            $out = $item->action_type === 'reduce' ? $item->quantity : 0;
-            $saldo = $stok_awal + $in - $out;
-
-            $averageCost = optional($warehouseProductCosts->get($key))->avg_cost;
-            $hpp = $item->price ?? $averageCost ?? optional($item->product)->cost_price ?? 0;
-
-            $hargaJual = optional($item->variation)->price ?? optional($item->product)->price ?? 0;
-            $nilaiStok = $saldo * $hpp;
-            $potensiLaba = ($hargaJual - $hpp) * $saldo;
-
-            $balances[$key] = $saldo;
-            $item->stok_awal = $stok_awal;
-            $item->stok_masuk = $in;
-            $item->stok_keluar = $out;
-            $item->saldo = $saldo;
-            $item->harga_beli = $item->price ?? $averageCost ?? 0;
-            $item->hpp = $hpp;
-            $item->harga_jual = $hargaJual;
-            $item->nilai_stok = $nilaiStok;
-            $item->potensi_laba = $potensiLaba;
-
-            return $item;
-        });
+        $items = WarehouseStockLog::getStockReportItems($start, $end, $productId);
 
         if ($perPage === 'all') {
             $collection = $items;
@@ -121,47 +79,7 @@ class LaporanStokController extends Controller
         $end = $request->query('end_date');
         $productId = $request->query('product_id');
 
-        $query = WarehouseStockTransaction::query()
-            ->with(['product', 'variation'])
-            ->when($start, fn ($q) => $q->whereDate('created_at', '>=', $start))
-            ->when($end, fn ($q) => $q->whereDate('created_at', '<=', $end))
-            ->when($productId, fn ($q) => $q->where('product_id', $productId))
-            ->orderBy('created_at');
-
-        $items = $query->get();
-
-        $warehouseProductCosts = WarehouseProduct::query()
-            ->when($productId, fn ($q) => $q->where('product_id', $productId))
-            ->get()
-            ->keyBy(fn ($w) => $w->warehouse_id . '_' . $w->product_id . '_' . ($w->variation_id ?? 0));
-
-        $balances = [];
-        $items = $items->map(function ($item) use (&$balances, $warehouseProductCosts) {
-            $key = $item->warehouse_id . '_' . $item->product_id . '_' . ($item->variation_id ?? 0);
-            $stok_awal = $balances[$key] ?? 0;
-            $in = $item->action_type === 'add' ? $item->quantity : 0;
-            $out = $item->action_type === 'reduce' ? $item->quantity : 0;
-            $saldo = $stok_awal + $in - $out;
-
-            $averageCost = optional($warehouseProductCosts->get($key))->avg_cost;
-            $hpp = $item->price ?? $averageCost ?? optional($item->product)->cost_price ?? 0;
-            $hargaJual = optional($item->variation)->price ?? optional($item->product)->price ?? 0;
-            $nilaiStok = $saldo * $hpp;
-            $potensiLaba = ($hargaJual - $hpp) * $saldo;
-
-            $balances[$key] = $saldo;
-            $item->stok_awal = $stok_awal;
-            $item->stok_masuk = $in;
-            $item->stok_keluar = $out;
-            $item->saldo = $saldo;
-            $item->harga_beli = $item->price ?? $averageCost ?? 0;
-            $item->hpp = $hpp;
-            $item->harga_jual = $hargaJual;
-            $item->nilai_stok = $nilaiStok;
-            $item->potensi_laba = $potensiLaba;
-
-            return $item;
-        });
+        $items = WarehouseStockLog::getStockReportItems($start, $end, $productId);
 
         $pdf = Pdf::loadView('pdf.stok_report', [
             'items' => $items,

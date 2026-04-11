@@ -11,8 +11,10 @@ use App\Http\Controllers\ReportPenjualanController;
 use App\Http\Controllers\LaporanPiutangController;
 use App\Http\Controllers\LaporanHutangController;
 use App\Http\Controllers\LaporanLabaRugiController;
+use App\Http\Controllers\LaporanNeracaController;
 use App\Http\Controllers\LaporanStokController;
 use App\Http\Controllers\LaporanRekapRekeningController;
+use App\Http\Controllers\LaporanArusKasController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\InsightController;
 use App\Http\Controllers\DashboardController;
@@ -116,9 +118,17 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::get('/umkm/laporan-laba-rugi/export-excel', [LaporanLabaRugiController::class, 'exportExcel'])->name('umkm.report.laba_rugi.export_excel');
     Route::get('/umkm/laporan-laba-rugi/export-pdf', [LaporanLabaRugiController::class, 'exportPdf'])->name('umkm.report.laba_rugi.export_pdf');
 
+    Route::get('/umkm/laporan-neraca', [LaporanNeracaController::class, 'index'])->name('umkm.report.neraca');
+    Route::get('/umkm/laporan-neraca/export-excel', [LaporanNeracaController::class, 'exportExcel'])->name('umkm.report.neraca.export_excel');
+    Route::get('/umkm/laporan-neraca/export-pdf', [LaporanNeracaController::class, 'exportPdf'])->name('umkm.report.neraca.export_pdf');
+
     Route::get('/umkm/laporan-rekap-rekening', [LaporanRekapRekeningController::class, 'index'])->name('umkm.report.rekap_rekening');
     Route::get('/umkm/laporan-rekap-rekening/export-excel', [LaporanRekapRekeningController::class, 'exportExcel'])->name('umkm.report.rekap_rekening.export_excel');
     Route::get('/umkm/laporan-rekap-rekening/export-pdf', [LaporanRekapRekeningController::class, 'exportPdf'])->name('umkm.report.rekap_rekening.export_pdf');
+
+    Route::get('/umkm/laporan-arus-kas', [LaporanArusKasController::class, 'index'])->name('umkm.report.cashflow');
+    Route::get('/umkm/laporan-arus-kas/export-excel', [LaporanArusKasController::class, 'exportExcel'])->name('umkm.report.cashflow.export_excel');
+    Route::get('/umkm/laporan-arus-kas/export-pdf', [LaporanArusKasController::class, 'exportPdf'])->name('umkm.report.cashflow.export_pdf');
 
     Route::post('/umkm/pos/set-outlet', [PosController::class, 'setOutlet']);
 
@@ -143,6 +153,9 @@ Route::middleware(['auth','umkm'])->group(function () {
     Route::get('/income', [TransactionController::class, 'income'])->name('umkm.transaction.income');
     Route::post('/income/store', [TransactionController::class, 'store_income'])->name('umkm.transaction.store_income');
     Route::delete('/income/delte/{id}', [TransactionController::class, 'destroy_income'])->name('umkm.transaction.delete_income');
+    Route::post('/cashflow/{id}/check', [TransactionController::class, 'check_cashflow'])->name('umkm.transaction.check_cashflow');
+    Route::post('/cashflow/{id}/post', [TransactionController::class, 'post_cashflow'])->name('umkm.transaction.post_cashflow');
+    Route::post('/cashflow/{id}/void', [TransactionController::class, 'void_cashflow'])->name('umkm.transaction.void_cashflow');
     Route::get('/cashflow/trash', [TransactionController::class,'trash'])
         ->name('umkm.transaction.trash');
     Route::post('/cashflow/restore/{id}', [TransactionController::class,'restore'])

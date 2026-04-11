@@ -1737,7 +1737,7 @@ class ProductController extends Controller
             $transactionCode = 'PO-' . $today . '-' . $codeNumber;
 
             // ================= INSERT STOCK LOG =================
-            DB::table('warehouse_stock_logs')->insert([
+            $warehouseLogId = DB::table('warehouse_stock_logs')->insertGetId([
 
                 'warehouse_id' => $warehouseId,
                 'product_id'   => $productId,
@@ -1752,6 +1752,7 @@ class ProductController extends Controller
 
                 'avg_cost_before' => $avgBefore,
                 'avg_cost_after'  => $avgAfter,
+                'supplier_name'  => $request->supplier_name ?? null,
 
                 'total' => $actionType === 'add' ? $total : null,
                 'paid'  => $actionType === 'add' ? $paid : 0,
@@ -1785,6 +1786,9 @@ class ProductController extends Controller
 
                     'account_id' => $validated['account_id'] ?? null,
                     'transaction_date' => $validated['transaction_date'] ?? now(),
+
+                    'reference_type' => 'warehouse',
+                    'reference_id' => $warehouseLogId,
 
                     'created_by' => auth()->id()
 

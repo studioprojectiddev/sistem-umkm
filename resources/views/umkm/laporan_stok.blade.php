@@ -75,11 +75,13 @@
                             <tr>
                                 <th style="min-width:120px;">Tanggal</th>
                                 <th>Produk</th>
+                                <th>Gudang</th>
                                 <th>Variasi</th>
                                 <th class="text-right">Stok Awal</th>
                                 <th class="text-right">Stok Masuk</th>
                                 <th class="text-right">Stok Keluar</th>
                                 <th class="text-right">Saldo Akhir</th>
+                                <th class="text-right">Min Stock</th>
                                 <th class="text-right">HPP</th>
                                 <th class="text-right">Nilai Stok</th>
                                 <th class="text-right">Potensi Laba</th>
@@ -90,18 +92,20 @@
                                 <tr>
                                     <td>{{ optional($item->created_at) ? \Carbon\Carbon::parse($item->created_at)->format('d/m/Y') : '-' }}</td>
                                     <td>{{ $item->product?->name ?? '-' }}</td>
+                                    <td>{{ $item->warehouse_name ?? '-' }}</td>
                                     <td>{{ $item->variation?->name ?? '-' }}</td>
                                     <td class="text-right">{{ number_format($item->stok_awal ?? 0, 0, ',', '.') }}</td>
                                     <td class="text-right">{{ number_format($item->stok_masuk ?? 0, 0, ',', '.') }}</td>
                                     <td class="text-right">{{ number_format($item->stok_keluar ?? 0, 0, ',', '.') }}</td>
-                                    <td class="text-right">{{ number_format($item->saldo ?? 0, 0, ',', '.') }}</td>
+                                    <td class="text-right">{{ number_format($item->stok_akhir ?? 0, 0, ',', '.') }}</td>
+                                    <td class="text-right">{{ number_format($item->min_stock ?? 0, 0, ',', '.') }}</td>
                                     <td class="text-right">Rp {{ number_format($item->hpp ?? 0, 0, ',', '.') }}</td>
                                     <td class="text-right">Rp {{ number_format($item->nilai_stok ?? 0, 0, ',', '.') }}</td>
                                     <td class="text-right">Rp {{ number_format($item->potensi_laba ?? 0, 0, ',', '.') }}</td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="6" style="text-align:center; padding: 20px;">Tidak ada data untuk periode ini.</td>
+                                    <td colspan="12" style="text-align:center; padding: 20px;">Tidak ada data untuk periode ini.</td>
                                 </tr>
                             @endforelse
                         </tbody>
